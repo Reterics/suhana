@@ -14,9 +14,9 @@
 - 🤖 **Chat with a personality** – Suhana remembers you and responds in character
 - 🔍 **Search local knowledge** – markdown, code, and notes in `/knowledge` folder
 - 🔄 **Pluggable AI engines** – supports [Ollama](https://ollama.com) (🦙) and OpenAI (🤖)
-- ⚡ **Execute commands** – define your own actions like `send_message()` or `update_profile()`
 - 🧠 **Memory-aware** – Suhana evolves with you via `!remember` and `profile.json`
 - 🔒 **Self-hosted & portable** – no cloud dependencies, runs on macOS/Windows/Linux
+- ⚡ **Execute commands** – define your own actions like `send_message()` or `update_profile()`
 
 ---
 
@@ -37,13 +37,49 @@ source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-### 3. Install [Ollama](https://ollama.com) and run a model
+### 3. Choose your LLM backend
+
+#### ✅ Option A: [Ollama](https://ollama.com) - local & private
+
+Install Ollama and run one of the supported models:
 
 ```bash
 ollama run llama3
 ```
+This will download and launch the llama3 model locally.
 
-You can also set up OpenAI with your API key by editing `settings.json`.
+Other available models include:
+
+- `mistral` – lightweight and fast
+- `llama3` – larger and more capable
+- `gemma` – Google’s open model
+- `phi` – compact and smart
+- `codellama` – optimized for coding tasks
+- `llava` – for multimodal (image + text) input
+
+You can set the model in `settings.json`:
+
+```json
+{
+  "llm_backend": "ollama",
+  "llm_model": "llama3"
+}
+```
+
+#### 🤖 Option B: OpenAI – cloud-powered
+
+ 1. Create a .env file in the root of the project with your API key:
+    ```dotenv
+    OPENAI_API_KEY=sk-...
+    ```
+ 2. In settings.json, set your backend and model:
+    ```json
+    {
+      "llm_backend": "openai",
+      "llm_model": "gpt-4"
+    }
+    ```
+> Suhana supports both backends. You can switch at runtime using `!switch openai` or `!switch ollama`.
 
 ---
 
@@ -130,4 +166,4 @@ A sample `profile.json`:
 
 MIT — use freely, modify locally, and share improvements.
 
---
+---
