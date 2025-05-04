@@ -1,11 +1,21 @@
 import json
+from pathlib import Path
+from dotenv import load_dotenv
 import os
+import json
 
-SETTINGS_PATH = "settings.json"
+load_dotenv()
+
+SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
 
 def load_settings():
     with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        settings = json.load(f)
+
+    # Fallback to env if not in settings
+    if not settings.get("openai_api_key"):
+        settings["openai_api_key"] = os.getenv("OPENAI_API_KEY")
+    return settings
 
 def save_settings(settings):
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:

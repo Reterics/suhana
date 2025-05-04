@@ -1,7 +1,8 @@
 import json
 import os
+from pathlib import Path
 
-PROFILE_PATH = "profile.json"
+PROFILE_PATH = Path(__file__).parent.parent / "profile.json"
 
 default_profile = {
     "name": "User",

@@ -6,3 +6,4 @@ profile.json
 vectorstore/
 __pycache__/
 *.pyc
+/vectorstore/

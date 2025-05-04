@@ -9,3 +9,6 @@ hf_xet
 openai>=1.0.0
 dotenv
 tiktoken
+fastapi
+uvicorn
+requests
