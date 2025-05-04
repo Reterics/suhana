@@ -67,14 +67,21 @@ Core logic is handled by a control loop using reasoning + acting + memory update
 ## 5. Folder Structure
 
 ```
-Suhana/
-├─ engine/         # Main loop, tools, agents
-├─ models/         # Prompt templates, system prompts
-├─ knowledge/      # Docs, code, notes to ingest
-├─ vectorstore/    # Index for semantic search
-├─ actions/        # Executable commands (e.g., Python)
-├─ profile.json    # User memory, preferences
-└─ main.py         # Entrypoint to run the agent
+ Suhana/
+ ├─ engine/         # Main loop, tools, agents
+ │  ├─ agent.py             # CLI loop entrypoint
+ │  ├─ engine_config.py     # Model backend config & switching
+ │  ├─ profile.py           # Profile memory & summarization
+ │  ├─ history.py           # Message trimming and summarization
+ │  └─ backends/            # Backend-specific logic (Ollama/OpenAI)
+ │     ├─ ollama.py
+ │     └─ openai.py
+ ├─ models/         # Prompt templates, system prompts
+ ├─ knowledge/      # Docs, code, notes to ingest
+ ├─ vectorstore/    # Index for semantic search
+ ├─ actions/        # Executable commands (e.g., Python)
+ ├─ profile.json    # User memory, preferences
+ └─ main.py         # Entrypoint to run the agent
 ```
 
 ---
