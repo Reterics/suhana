@@ -26,60 +26,70 @@
 
 ```bash
 git clone https://github.com/Reterics/suhana.git
-cd Suhana
+cd suhana
 ```
 
-### 2. Set up Python environment
+### 2. Install Python + Ollama (if not already installed)
 
+You need **Python 3.11+** installed. Then choose one of the following:
+
+
+#### ✅ Option A: [Ollama](https://ollama.com) — run models locally (recommended)
+
+1. **Install Ollama**:
+   - macOS / Windows: [https://ollama.com/download](https://ollama.com/download)
+   - Linux:
+     ```bash
+     curl -fsSL https://ollama.com/install.sh | sh
+     ```
+
+2. Start a model:
+   ```bash
+   ollama run llama3
+   ```
+   > Other available models include:
+   > 
+   > - `mistral` – lightweight and fast  
+   > - `llama3` – larger and more capable  
+   > - `gemma` – Google’s open model  
+   > - `phi` – compact and smart  
+   > - `codellama` – optimized for coding tasks  
+   > - `llava` – for multimodal (image + text) input  
+
+3. You can change model in `settings.template.json` or at runtime.
+
+---
+
+#### 🤖 Option B: OpenAI — run via cloud API
+
+1. Add your OpenAI key in a `.env` file:
+   ```dotenv
+   OPENAI_API_KEY=sk-...
+   ```
+
+2. Set model and backend:
+   ```json
+   {
+     "llm_backend": "openai",
+     "openai_model": "gpt-4"
+   }
+   ```
+
+> You can switch between engines at runtime using `!switch ollama` or `!switch openai`.
+
+### 3. Run the Setup Script
+
+#### 🐧 macOS / Linux:
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
+./setup.sh
 ```
 
-### 3. Choose your LLM backend
-
-#### ✅ Option A: [Ollama](https://ollama.com) - local & private
-
-Install Ollama and run one of the supported models:
-
-```bash
-ollama run llama3
-```
-This will download and launch the llama3 model locally.
-
-Other available models include:
-
-- `mistral` – lightweight and fast
-- `llama3` – larger and more capable
-- `gemma` – Google’s open model
-- `phi` – compact and smart
-- `codellama` – optimized for coding tasks
-- `llava` – for multimodal (image + text) input
-
-You can set the model in `settings.json`:
-
-```json
-{
-  "llm_backend": "ollama",
-  "llm_model": "llama3"
-}
+#### 🪟 Windows (CMD or PowerShell):
+```cmd
+setup.bat
 ```
 
-#### 🤖 Option B: OpenAI – cloud-powered
-
- 1. Create a .env file in the root of the project with your API key:
-    ```dotenv
-    OPENAI_API_KEY=sk-...
-    ```
- 2. In settings.json, set your backend and model:
-    ```json
-    {
-      "llm_backend": "openai",
-      "llm_model": "gpt-4"
-    }
-    ```
-> Suhana supports both backends. You can switch at runtime using `!switch openai` or `!switch ollama`.
+> This will create a virtualenv, install dependencies, and auto-generate `settings.json` and `profile.json` if missing.
 
 ---
 
@@ -113,7 +123,6 @@ Hello, I'm Suhana 🦙 — powered by: OLLAMA (llama3)
 |----------------|-----------------------------------------|
 | `!engine`       | Show the current model + backend        |
 | `!switch openai`| Switch between Ollama and OpenAI        |
-| `!remember xyz` | Store user facts in `profile.json`      |
 | `!exit`         | Leave the session                       |
 
 ---
@@ -121,15 +130,24 @@ Hello, I'm Suhana 🦙 — powered by: OLLAMA (llama3)
 ## 🧩 Folder Structure
 
 ```
-Suhana/
-├─ engine/         # Core agent logic
-├─ knowledge/      # Your documents and notes
-├─ vectorstore/    # Local FAISS index (auto-generated)
-├─ models/         # Persona config (`persona.yaml`)
-├─ profile.json    # User memory and preferences
-├─ settings.json   # Backend + model config
-├─ ingest.py       # File indexer
-└─ main.py         # Entry point
+suhana/
+├─ engine/                # Core logic
+│  ├─ agent.py            # Main loop
+│  ├─ engine_config.py    # Settings and backend switching
+│  ├─ profile.py          # Memory and preferences
+│  ├─ history.py          # Summarization + trimming
+│  └─ backends/           # ollama.py / openai.py
+├─ knowledge/             # Your documents and notes
+├─ vectorstore/           # Auto-generated FAISS index
+├─ models/                # Prompt templates
+├─ assets/                # Logos and visuals
+├─ ingest.py              # Knowledge indexer
+├─ main.py                # Entrypoint and setup runner
+├─ settings.template.json # Safe config defaults
+├─ profile.json           # Runtime user profile (generated)
+├─ settings.json          # Runtime config (generated)
+├─ .gitignore             # Excludes local state
+└─ setup.sh / setup.bat   # Easy one-step setup
 ```
 
 ---
@@ -154,11 +172,11 @@ A sample `profile.json`:
 
 ## 🧠 Model Support
 
-| Engine   | Status     | Notes                     |
-|----------|------------|---------------------------|
-| Ollama   | ✅ Stable   | llama3, mistral, etc.     |
-| OpenAI   | ✅ Optional | Requires API key          |
-| LocalHF  | 🔜 Planned  | Hugging Face local models |
+| Engine   | Status                   | Notes                              |
+|----------|--------------------------|------------------------------------|
+| Ollama   | ✅ Required if selected   | llama3, mistral, gemma, phi, etc.  |
+| OpenAI   | ✅ Optional               | Requires API key                   |
+| LocalHF  | 🔜 Planned                | Hugging Face local models          |
 
 ---
 
