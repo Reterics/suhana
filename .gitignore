@@ -7,3 +7,4 @@ vectorstore/
 __pycache__/
 *.pyc
 /vectorstore/
+api_keys.json

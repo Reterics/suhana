@@ -180,6 +180,73 @@ A sample `profile.json`:
 
 ---
 
+## 🧪 Testing the FastAPI API
+
+### 1. Start the API server
+
+From the project root:
+
+```bash
+uvicorn engine.api_server:app --reload
+```
+
+If `api_keys.json` does not exist, it will be created automatically using:
+
+- The `SUHANA_DEFAULT_API_KEY` from your `.env` file
+- Or a secure randomly generated key
+
+---
+
+### 2. Access the interactive Swagger UI
+
+Open in your browser:
+
+```
+http://localhost:8000/docs
+```
+
+Use the `/query` endpoint, and set the `x-api-key` header.
+
+---
+
+### 3. Example request via `curl`
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY_HERE" \
+  -d '{"input": "What is Suhana?", "backend": "ollama"}'
+```
+
+---
+
+### 4. Example request via Python
+
+```python
+import requests
+
+res = requests.post("http://localhost:8000/query", json={
+    "input": "Hello, who are you?",
+    "backend": "ollama"
+}, headers={
+    "x-api-key": "YOUR_API_KEY_HERE"
+})
+
+print(res.json())
+```
+
+---
+
+### 5. Notes
+
+- API keys are stored in `api_keys.json` (excluded from Git via `.gitignore`)
+- To customize the default dev key, define `SUHANA_DEFAULT_API_KEY` in your `.env`
+- All keys must be marked `"active": true` to be accepted
+- You can edit `api_keys.json` while the server is running — no restart needed
+
+
+---
+
 ## 🛡 License
 
 MIT — use freely, modify locally, and share improvements.
