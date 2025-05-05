@@ -16,13 +16,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 3. Create venv
+REM 3. Check FFmpeg
+where ffplay >nul 2>nul
+if %errorlevel% neq 0 (
+    echo ❌ FFmpeg not found. Please install it via https://ffmpeg.org/download.html or choco install ffmpeg
+    exit /b
+)
+
+REM 4. Create venv
 if not exist venv (
     python -m venv venv
     echo ✅ Virtual environment created.
 )
 
-REM 4. Activate and install deps
+REM 5. Activate and install deps
 call venv\Scripts\activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt

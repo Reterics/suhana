@@ -15,6 +15,7 @@
 - 🔍 **Search local knowledge** – markdown, code, and notes in `/knowledge` folder
 - 🔄 **Pluggable AI engines** – supports [Ollama](https://ollama.com) (🦙) and OpenAI (🤖)
 - 🧠 **Memory-aware** – Suhana evolves with you via `!remember` and `profile.json`
+- 🔊 **Voice input/output** – speak naturally to Suhana and hear her reply (Whisper + Coqui)
 - 🔒 **Self-hosted & portable** – no cloud dependencies, runs on macOS/Windows/Linux
 - ⚡ **Execute commands** – define your own actions like `send_message()` or `update_profile()`
 

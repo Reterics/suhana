@@ -17,7 +17,19 @@ if ! command -v ollama &>/dev/null; then
   exit 1
 fi
 
-# 3. Create and activate virtualenv
+# 3. Check FFmpeg
+if ! command -v ffplay &>/dev/null; then
+  echo "❌ FFmpeg is not installed (needed for voice output)."
+  if command -v brew &>/dev/null; then
+    echo "🍺 Installing FFmpeg via Homebrew..."
+    brew install ffmpeg
+  else
+    echo "⚠️ Please install FFmpeg manually (https://ffmpeg.org/download.html) or brew install ffmpeg"
+    exit 1
+  fi
+fi
+
+# 4. Create and activate virtualenv
 if [ ! -d "venv" ]; then
   python3 -m venv venv
   echo "✅ Virtual environment created."

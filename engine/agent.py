@@ -1,36 +1,52 @@
 from engine.engine_config import load_settings, switch_backend
 from engine.profile import load_profile
 from engine.agent_core import handle_input
+from engine.voice import transcribe_audio, speak_text
 
 def run_agent():
     settings = load_settings()
     backend = settings.get("llm_backend", "ollama")
     profile = load_profile()
     name = "Suhana"
+    voice_mode = True
 
     print(f"Hello, I'm {name} — {'🦙' if backend == 'ollama' else '🤖'} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})\n")
+    print("Type 'voice on' to enable voice input/output, 'voice off' to disable.\n")
 
     while True:
         try:
-            user_input = input("> ").strip()
-            if user_input.lower() in ("exit", "quit"):
+            user_input = transcribe_audio() if voice_mode else input("> ").strip()
+            if voice_mode:
+                print(f"You: {user_input}")
+            command = user_input.lower().strip()
+
+            if command in ("exit", "quit"):
                 print("Goodbye.")
                 break
-
+            if command == "voice on":
+                voice_mode = True
+                print("🎙️ Voice mode enabled.")
+                continue
+            if command == "voice off":
+                voice_mode = False
+                print("🛑 Voice mode disabled.")
+                continue
+            if command.startswith("switch "):
+                backend = switch_backend(command.split(" ")[1], settings)
+                continue
+            elif command == "engine":
+                print(
+                    f"🔧 Current engine: {'🦙' if backend == 'ollama' else '🤖'} {backend.upper()} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})")
+                continue
             if user_input.startswith("!"):
                 # handle_command(user_input[1:].strip())
                 continue
 
-            if user_input.startswith("switch "):
-                backend = switch_backend(user_input.split(" ")[1], settings)
-                continue
-            elif user_input == "engine":
-                print(f"🔧 Current engine: {'🦙' if backend == 'ollama' else '🤖'} {backend.upper()} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})")
-                continue
-
-            print("[LLM] Thinking...")
-            response = handle_input(user_input, backend, profile, settings, name)
+            print("🎙️ Thinking...")
+            response = handle_input(user_input, backend, profile, settings)
             print(f"{name}: {response}\n")
+            if voice_mode:
+                speak_text(response)
 
         except KeyboardInterrupt:
             print("\nSession ended.")
