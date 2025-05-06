@@ -6,9 +6,9 @@ from engine.voice import transcribe_audio, speak_text
 def run_agent():
     settings = load_settings()
     backend = settings.get("llm_backend", "ollama")
+    voice_mode = settings.get("voice", False)
     profile = load_profile()
     name = "Suhana"
-    voice_mode = True
 
     print(f"Hello, I'm {name} — {'🦙' if backend == 'ollama' else '🤖'} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})\n")
     print("Type 'voice on' to enable voice input/output, 'voice off' to disable.\n")

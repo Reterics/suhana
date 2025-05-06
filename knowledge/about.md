@@ -70,9 +70,13 @@ Core logic is handled by a control loop using reasoning + acting + memory update
  Suhana/
  ├─ engine/         # Main loop, tools, agents
  │  ├─ agent.py             # CLI loop entrypoint
+ │  ├─ agent_core.py        # handle_input
+ │  ├─ api_key_store.py     # API Key management
+ │  ├─ api_server.py        # FastAPI server
  │  ├─ engine_config.py     # Model backend config & switching
  │  ├─ profile.py           # Profile memory & summarization
  │  ├─ history.py           # Message trimming and summarization
+ │  ├─ voice.py             # Coqui TTS and Whisper implementation
  │  └─ backends/            # Backend-specific logic (Ollama/OpenAI)
  │     ├─ ollama.py
  │     └─ openai.py
