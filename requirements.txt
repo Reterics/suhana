@@ -20,4 +20,5 @@ sounddevice~=0.5.1
 scipy
 numpy~=1.26.4
 soundfile~=0.13.1
-python-multipartf
+python-multipart
+bs4

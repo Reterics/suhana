@@ -1,8 +1,10 @@
+from engine.action_store import execute_action
 from engine.engine_config import load_settings, switch_backend
 from engine.profile import load_profile
 from engine.agent_core import handle_input
 from engine.voice import transcribe_audio, speak_text
 from engine.memory_store import add_memory_fact, recall_memory, forget_memory
+from engine.intent import detect_intent
 
 def run_agent():
     settings = load_settings()
@@ -21,6 +23,8 @@ def run_agent():
                 print(f"You: {user_input}")
             command = user_input.lower().strip()
 
+            if not user_input.strip():
+                continue
             if command in ("exit", "quit"):
                 print("Goodbye.")
                 break
@@ -56,8 +60,12 @@ def run_agent():
                 removed = forget_memory(keyword)
                 print(f"🧹 Removed {removed} memory entry(ies) matching '{keyword}'.\n")
                 continue
-            if user_input.startswith("!"):
-                # handle_command(user_input[1:].strip())
+
+            intent_data = detect_intent(user_input)
+            if intent_data["intent"]:
+                print(f"[🔎] Detected intent: {intent_data['intent']} → {intent_data['params']}")
+                result = execute_action(intent_data["action"], intent_data["params"], intent_data)
+                print(f"{name}: {result}\n")
                 continue
 
             print("🎙️ Thinking...")

@@ -1,0 +1,24 @@
+- intent: add_note
+  description: Add a personal note or reminder
+  pattern: "\\b(remind|note|remember|todo)\\b.*(?P<content>.+)"
+  action: note
+
+- intent: search_web
+  description: Perform a web search
+  pattern: "(?:search|google|look up|find|can you search(?: for me)?)(?: about| for)?\\s+(?P<query>[A-Za-z0-9 '\\-]+)[\\?\\. ]*$"
+  action: web_search
+
+- intent: update_profile
+  description: Update user preferences or profile
+  pattern: "\\b(set|change|update)\\b.*\\b(preference|name|profile)\\b.*(?P<key>[A-Za-z_]+)\\b.*\\bto\\b\\s*(?P<value>.+)"
+  action: update_profile
+
+- intent: get_time
+  description: Ask for current time
+  pattern: "\\bwhat('?s| is)?\\b.*\\btime\\b"
+  action: tell_time
+
+- intent: get_date
+  description: Ask for current date
+  pattern: "\\bwhat('?s| is)?\\b.*\\bdate\\b"
+  action: tell_date
