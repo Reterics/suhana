@@ -2,6 +2,7 @@ from engine.engine_config import load_settings, switch_backend
 from engine.profile import load_profile
 from engine.agent_core import handle_input
 from engine.voice import transcribe_audio, speak_text
+from engine.memory_store import add_memory_fact, recall_memory, forget_memory
 
 def run_agent():
     settings = load_settings()
@@ -37,6 +38,23 @@ def run_agent():
             elif command == "engine":
                 print(
                     f"🔧 Current engine: {'🦙' if backend == 'ollama' else '🤖'} {backend.upper()} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})")
+                continue
+            if user_input.startswith("!remember "):
+                fact = user_input[len("!remember "):]
+                add_memory_fact(fact)
+                print(f"🧠 Remembered: {fact}\n")
+                continue
+            if user_input.strip() == "!recall":
+                facts = recall_memory()
+                if not facts:
+                    print("🧠 No memories stored.\n")
+                else:
+                    print("🧠 Memories:\n" + "\n".join(f"- {fact}" for fact in facts) + "\n")
+                continue
+            if user_input.startswith("!forget "):
+                keyword = user_input[len("!forget "):].strip()
+                removed = forget_memory(keyword)
+                print(f"🧹 Removed {removed} memory entry(ies) matching '{keyword}'.\n")
                 continue
             if user_input.startswith("!"):
                 # handle_command(user_input[1:].strip())

@@ -7,5 +7,6 @@ vectorstore/
 __pycache__/
 *.pyc
 /vectorstore/
+/memory/
 api_keys.json
 speech.wav

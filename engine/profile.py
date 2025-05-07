@@ -9,15 +9,9 @@ default_profile = {
     "history": [],
     "preferences": {
         "preferred_language": "English",
-        "communication_style": "neutral",
+        "communication_style": "friendly, brief, couple of sentente max",
         "focus": "general"
-    },
-    "memory": [
-    {
-      "type": "fact",
-      "content": "Suhana should act like a helpful AI teammate, not a servant."
     }
-  ]
 }
 
 def load_profile():
@@ -32,11 +26,13 @@ def save_profile(profile):
 
 def summarize_profile_for_prompt(profile) -> str:
     preferences = profile.get("preferences", {})
-    memory = profile.get("memory", [])
+    name = profile.get("name", "User")
 
-    summary = f"You are Suhana, You are speaking to {profile.get('name', 'User')}.\nPreferences:\n"
-    summary += "\n".join([f"- {k.replace('_', ' ').capitalize()}: {v}" for k, v in preferences.items()]) or "None"
-    if memory:
-        summary += "\nKnown facts:\n"
-        summary += "\n".join([f"- {item['content']}" for item in memory])
+    summary = f"You are Suhana, who speaks with {name}.\n"
+    summary += "Communication preferences:\n"
+
+    summary += "\n".join([
+        f"- {k.replace('_', ' ').capitalize()}: {v}"
+        for k, v in preferences.items()
+    ]) or "- No specific preferences defined."
     return summary

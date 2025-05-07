@@ -6,6 +6,7 @@ from engine.backends.ollama import query_ollama
 from engine.backends.openai import query_openai
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from engine.memory_store import search_memory
 
 # Global/shared components
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -25,10 +26,41 @@ def get_vectorstore():
 
 vectorstore = get_vectorstore()
 
+def should_include_documents(user_input: str, mems: list) -> bool:
+    keywords = ["explain", "how", "what is", "summarize", "doc", "article", "paper", "research", "source"]
+
+    # Heuristic 1: Direct query keywords
+    if any(k in user_input.lower() for k in keywords):
+        return True
+
+    # Heuristic 2: Memory contains only short facts
+    if all(len(m.page_content.split()) < 10 for m in mems):
+        return True
+
+    # Heuristic 3: No strong semantic match (low memory count)
+    if len(mems) < 2:
+        return True
+
+    return False
+
+
 def handle_input(user_input: str, backend: str, profile: dict, settings: dict) -> str:
-    docs = vectorstore.similarity_search(user_input, k=3)
-    context = "\n".join([d.page_content for d in docs])
-    system_prompt = f"{summarize_profile_for_prompt(profile)}\nContext: {context}"
+    mems = search_memory(user_input, k=10)
+    include_docs = should_include_documents(user_input, mems)
+
+    context_parts = []
+    if mems:
+        context_parts.append("MEMORY:\n" + "\n".join(f"- {m.page_content}" for m in mems))
+
+    if include_docs:
+        docs_with_scores = vectorstore.similarity_search_with_score(user_input, k=10)
+        docs = [doc for doc, score in docs_with_scores if score < 0.3]
+        if docs:
+            context_parts.append("DOCUMENTS:\n" + "\n".join(f"- {d.page_content}" for d in docs))
+    context = "\n".join(context_parts)
+    system_prompt = f"{summarize_profile_for_prompt(profile)}\n\nContext:\n{context}"
+    if not context_parts:
+        print("[⚠️] No relevant memory or documents found.")
 
     if backend == "ollama":
         reply = query_ollama(user_input, system_prompt, profile, settings)
