@@ -1,17 +1,22 @@
 from engine.action_store import execute_action
 from engine.engine_config import load_settings, switch_backend
-from engine.profile import load_profile
 from engine.agent_core import handle_input
 from engine.voice import transcribe_audio, speak_text
 from engine.memory_store import add_memory_fact, recall_memory, forget_memory
 from engine.intent import detect_intent
+from engine.conversation_store import (
+    create_new_conversation,
+    load_conversation,
+    save_conversation, list_conversations, list_conversation_meta
+)
 
 def run_agent():
     settings = load_settings()
     backend = settings.get("llm_backend", "ollama")
     voice_mode = settings.get("voice", False)
     stream = settings.get("streaming", False)
-    profile = load_profile()
+    conversation_id = create_new_conversation()
+    profile = load_conversation(conversation_id)
     name = "Suhana"
 
     print(f"Hello, I'm {name} — {'🦙' if backend == 'ollama' else '🤖'} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})\n")
@@ -36,6 +41,19 @@ def run_agent():
             if command == "voice off":
                 voice_mode = False
                 print("🛑 Voice mode disabled.")
+                continue
+            if command == "!load":
+                conversations = list_conversation_meta()
+                print("📜 Available conversations:")
+                for i, meta in enumerate(conversations):
+                    print(f"{i + 1}. [{meta['title']}] – {meta['last_updated']}")
+                choice = input("Enter number to load: ").strip()
+                if choice.isdigit() and 1 <= int(choice) <= len(conversations):
+                    conversation_id = conversations[int(choice) - 1]['id']
+                    profile = load_conversation(conversation_id)
+                    print(f"✅ Switched to conversation: {conversation_id}")
+                else:
+                    print("❌ Invalid selection.")
                 continue
             if command.startswith("switch "):
                 backend = switch_backend(command.split(" ")[1], settings)
@@ -80,6 +98,8 @@ def run_agent():
                 print("\n")
             else:
                 print(f"{name}: {response}\n")
+
+            save_conversation(conversation_id, profile)
             if voice_mode:
                 speak_text(response)
 

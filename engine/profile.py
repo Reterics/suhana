@@ -4,7 +4,7 @@ from pathlib import Path
 
 PROFILE_PATH = Path(__file__).parent.parent / "profile.json"
 
-default_profile = {
+default_profile_meta = {
     "name": "User",
     "history": [],
     "preferences": {
@@ -14,15 +14,16 @@ default_profile = {
     }
 }
 
-def load_profile():
+def load_profile_meta():
     if os.path.exists(PROFILE_PATH):
         with open(PROFILE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    return default_profile.copy()
+    return default_profile_meta.copy()
 
-def save_profile(profile):
+def save_profile_meta(profile):
+    cleaned = {k: profile.get(k, default_profile_meta[k]) for k in default_profile_meta}
     with open(PROFILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(profile, f, indent=2)
+        json.dump(cleaned, f, indent=2)
 
 def summarize_profile_for_prompt(profile) -> str:
     preferences = profile.get("preferences", {})

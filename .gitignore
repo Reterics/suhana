@@ -8,5 +8,6 @@ __pycache__/
 *.pyc
 /vectorstore/
 /memory/
+/conversations/
 api_keys.json
 speech.wav

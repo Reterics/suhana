@@ -1,7 +1,18 @@
-import { useEffect, useState } from 'preact/hooks';
+import {useEffect, useState} from 'preact/hooks';
+import {useConversation} from "../context/ConversationContext.tsx";
+
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  created: string;
+  last_updated: string;
+}
+
 
 export function useFastAPI(baseUrl: string, apiKey: string) {
   const [apiReady, setApiReady] = useState(false);
+  const { state, dispatch } = useConversation();
+  const { conversationId } = state;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -10,7 +21,7 @@ export function useFastAPI(baseUrl: string, apiKey: string) {
         const res = await fetch(`${baseUrl}/health`, {
           redirect: 'follow',
           headers: {
-            ...(apiKey ? { 'x-api-key': apiKey } : {})
+            ...(apiKey ? {'x-api-key': apiKey} : {})
           }
         }).catch(console.error)
         if (res?.ok) {
@@ -29,14 +40,34 @@ export function useFastAPI(baseUrl: string, apiKey: string) {
     void check();
   }, [baseUrl, apiKey]);
 
+  const loadConversation = async (id: string) => {
+    const res = await fetch(`${baseUrl}/conversations/${id}`, {
+      headers: {
+        ...(apiKey ? { 'x-api-key': apiKey } : {})
+      }
+    });
+    const data = await res.json();
+    dispatch({ type: 'SET_ID', payload: id });
+    dispatch({ type: 'SET_HISTORY', payload: data.history || [] });
+  };
+
+  const listConversations = async (): Promise<ConversationMeta[]> => {
+    const res = await fetch(`${baseUrl}/conversations`, {
+      headers: {
+        ...(apiKey ? { 'x-api-key': apiKey } : {})
+      }
+    });
+    return await res.json();
+  };
+
   const sendMessage = async (input: string, backend = 'ollama') => {
     const res = await fetch(`${baseUrl}/query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(apiKey ? { 'x-api-key': apiKey } : {})
+        ...(apiKey ? {'x-api-key': apiKey} : {})
       },
-      body: JSON.stringify({ input, backend })
+      body: JSON.stringify({input, backend, conversation_id: conversationId})
     });
     const data = await res.json();
     return data.response as string;
@@ -51,16 +82,16 @@ export function useFastAPI(baseUrl: string, apiKey: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(apiKey ? { 'x-api-key': apiKey } : {})
+        ...(apiKey ? {'x-api-key': apiKey} : {})
       },
-      body: JSON.stringify({ input, backend })
+      body: JSON.stringify({input, backend, conversation_id: conversationId})
     });
 
     const reader = res.body?.getReader();
     const decoder = new TextDecoder('utf-8');
 
     while (true) {
-      const { value, done } = await reader!.read();
+      const {value, done} = await reader!.read();
       if (done) break;
       if (value) onToken(decoder.decode(value));
     }
@@ -73,7 +104,7 @@ export function useFastAPI(baseUrl: string, apiKey: string) {
     const res = await fetch(`${baseUrl}/transcribe`, {
       method: 'POST',
       headers: {
-        ...(apiKey ? { 'x-api-key': apiKey } : {})
+        ...(apiKey ? {'x-api-key': apiKey} : {})
       },
       body: form
     });
@@ -85,6 +116,11 @@ export function useFastAPI(baseUrl: string, apiKey: string) {
   return {
     apiReady,
     error,
+    conversationId,
+    history: state.history,
+    dispatch,
+    listConversations,
+    loadConversation,
     sendMessage,
     sendStreamingMessage,
     transcribe

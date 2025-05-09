@@ -1,17 +1,31 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
-import { useFastAPI } from '../hooks/useFastAPI.ts';
+import {ConversationMeta, useFastAPI} from '../hooks/useFastAPI.ts';
+import {Message} from "../context/ConversationContext.tsx";
 
 export function App() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('suhana_key') || 'YOUR_API_KEY_HERE');
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<string[]>([]);
   const [volume, setVolume] = useState(0);
   const [micDeviceId, setMicDeviceId] = useState<string>('');
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [micTestStatus, setMicTestStatus] = useState<'pending' | 'success' | 'fail' | null>(null);
   const intervalRef = useRef<number>();
-  const { apiReady, error, sendStreamingMessage, transcribe } = useFastAPI('http://localhost:8000', apiKey);
+  const { apiReady, error, sendStreamingMessage, transcribe, listConversations, loadConversation, history } = useFastAPI('http://localhost:8000', apiKey);
+  const [conversationList, setConversationList] = useState<ConversationMeta[]>([]);
+  const [messages, setMessages] = useState<Message[]>(history);
+
+  useEffect(() => {
+    if (history) {
+      setMessages(history)
+    }
+  }, [history]);
+
+  useEffect(() => {
+    if (apiReady && !error) {
+      listConversations().then(setConversationList);
+    }
+  }, [apiReady]);
 
   useEffect(() => {
     navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -20,7 +34,7 @@ export function App() {
     });
   }, []);
 
-  if (!apiReady) return <div className="flex items-center justify-center h-screen text-gray-400 text-xl">🛠️ Suhana is starting...</div>;
+  if (!apiReady) return <div className="flex items-center justify-center h-screen text-gray-400 text-xl"><img src='./suhana.png' className="h-10 me-2"/> Suhana is starting...</div>;
   if (error) return <div className="flex items-center justify-center h-screen text-red-500 text-xl">{error}</div>;
 
   async function testMic(deviceId: string) {
@@ -51,14 +65,23 @@ export function App() {
 
   async function handleSendMessage() {
     if (!input.trim()) return;
-    setMessages(prev => [...prev, `You: ${input}`, `Suhana: ...`]);
+    setMessages(prev => [...prev, {
+      role: 'user',
+      content: input
+  }, {
+      role: 'assistant',
+      content: '...'
+  }]);
     const index = messages.length + 1;
     let text = '';
     await sendStreamingMessage(input, token => {
       text += token;
       setMessages(prev => {
         const copy = [...prev];
-        copy[index] = `Suhana: ${text}`;
+        copy[index] = {
+            role: 'assistant',
+            content: text
+        }
         return copy;
       });
     });
@@ -109,7 +132,10 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden text-gray-800 bg-white">
-      <Sidebar />
+      <Sidebar
+        conversations={conversationList}
+        onSelectConversation={loadConversation}
+      />
       <main className="flex-1 flex flex-col p-6 overflow-hidden">
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
@@ -152,8 +178,8 @@ export function App() {
 
         <div className="flex-1 border rounded p-4 mb-4 overflow-y-auto space-y-2 bg-gray-50">
           {messages.map((m, i) => (
-            <div key={i} className={m.startsWith('You:') ? 'text-right text-black' : 'text-left text-gray-600'}>
-              {m}
+            <div key={i} className={m.role === 'user' ? 'text-right text-black' : 'text-left text-gray-600'}>
+              {m.content}
             </div>
           ))}
         </div>

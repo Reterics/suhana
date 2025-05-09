@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from engine.profile import summarize_profile_for_prompt, save_profile
+from engine.profile import summarize_profile_for_prompt, save_profile_meta
 from engine.backends.ollama import query_ollama
 from engine.backends.openai import query_openai
 from langchain_community.vectorstores import FAISS
@@ -69,5 +69,4 @@ def handle_input(user_input: str, backend: str, profile: dict, settings: dict, f
     else:
         reply = "[❌ Unknown backend]"
 
-    save_profile(profile)
     return reply

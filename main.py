@@ -2,7 +2,7 @@ import os
 import json
 import shutil
 from engine.agent import run_agent
-from engine.profile import default_profile
+from engine.profile import default_profile_meta
 
 def ensure_file(file_path, template_path=None, default_data=None):
     if not os.path.exists(file_path):
@@ -18,7 +18,7 @@ def ensure_file(file_path, template_path=None, default_data=None):
 
 def main():
     ensure_file("settings.json", template_path="settings.template.json")
-    ensure_file("profile.json", default_data=default_profile)
+    ensure_file("profile.json", default_data=default_profile_meta)
     run_agent()
 
 if __name__ == "__main__":
