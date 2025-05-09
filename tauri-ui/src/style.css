@@ -1,4 +1,6 @@
+@import "tailwindcss";
+
+
 body {
-  font-family: sans-serif;
-  padding: 2em;
+  padding: 0
 }
