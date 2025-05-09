@@ -44,7 +44,7 @@ def should_include_documents(user_input: str, mems: list) -> bool:
     return False
 
 
-def handle_input(user_input: str, backend: str, profile: dict, settings: dict) -> str:
+def handle_input(user_input: str, backend: str, profile: dict, settings: dict, force_stream=False) -> str:
     mems = search_memory(user_input, k=10)
     include_docs = should_include_documents(user_input, mems)
 
@@ -63,9 +63,9 @@ def handle_input(user_input: str, backend: str, profile: dict, settings: dict) -
         print("[⚠️] No relevant memory or documents found.")
 
     if backend == "ollama":
-        reply = query_ollama(user_input, system_prompt, profile, settings)
+        reply = query_ollama(user_input, system_prompt, profile, settings, force_stream=force_stream)
     elif backend == "openai":
-        reply = query_openai(user_input, system_prompt, profile, settings)
+        reply = query_openai(user_input, system_prompt, profile, settings, force_stream=force_stream)
     else:
         reply = "[❌ Unknown backend]"
 

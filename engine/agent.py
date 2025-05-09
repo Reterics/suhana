@@ -10,6 +10,7 @@ def run_agent():
     settings = load_settings()
     backend = settings.get("llm_backend", "ollama")
     voice_mode = settings.get("voice", False)
+    stream = settings.get("streaming", False)
     profile = load_profile()
     name = "Suhana"
 
@@ -70,7 +71,15 @@ def run_agent():
 
             print("🎙️ Thinking...")
             response = handle_input(user_input, backend, profile, settings)
-            print(f"{name}: {response}\n")
+            if stream:
+                print(f"{name}: ", end="", flush=True)
+                reply = ""
+                for token in response:
+                    print(token, end="", flush=True)
+                    reply += token
+                print("\n")
+            else:
+                print(f"{name}: {response}\n")
             if voice_mode:
                 speak_text(response)
 

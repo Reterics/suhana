@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import {useFastAPI} from "../hooks/useFastAPI.ts";
 
 export function App() {
   const [apiKey, setApiKey] = useState(
@@ -15,12 +16,22 @@ export function App() {
 
   const intervalRef = useRef<number>();
 
+  const { apiReady, error, sendStreamingMessage, transcribe } = useFastAPI('http://localhost:8000', apiKey);
+
   useEffect(() => {
     navigator.mediaDevices.enumerateDevices().then(devices => {
       const mics = devices.filter(d => d.kind === 'audioinput');
       setMicDevices(mics);
     });
   }, []);
+
+  if (!apiReady) {
+    return <div style={{ padding: '2em', textAlign: 'center' }}><h2>🛠️ Suhana is starting...</h2></div>;
+  }
+
+  if (error) {
+    return <div style={{ padding: '2em', textAlign: 'center', color: 'red' }}><h2>{error}</h2></div>;
+  }
 
   async function testMic(deviceId: string) {
     setMicTestStatus('pending');
@@ -53,20 +64,19 @@ export function App() {
     }, 5000);
   }
 
-  async function sendMessage() {
+  async function handleSendMessage() {
     if (!input.trim()) return;
-
-    const response = await fetch('http://localhost:8000/query', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey
-      },
-      body: JSON.stringify({ input, backend: 'ollama' })
+    setMessages(prev => [...prev, `You: ${input}`, `Suhana: ...`]);
+    const index = messages.length + 1;
+    let text = '';
+    await sendStreamingMessage(input, token => {
+      text += token;
+      setMessages(prev => {
+        const copy = [...prev];
+        copy[index] = `Suhana: ${text}`;
+        return copy;
+      });
     });
-
-    const data = await response.json();
-    setMessages(prev => [...prev, `You: ${input}`, `Suhana: ${data.response}`]);
     setInput('');
     localStorage.setItem('suhana_key', apiKey);
   }
@@ -99,23 +109,15 @@ export function App() {
       stream.getTracks().forEach(track => track.stop());
 
       const blob = new Blob(chunks, { type: 'audio/webm' });
-      const form = new FormData();
-      form.append('audio', blob, 'speech.webm');
-
-      const res = await fetch('http://localhost:8000/transcribe', {
-        method: 'POST',
-        body: form
-      });
-
-      const { text } = await res.json();
+      const text = await transcribe(blob);
       setInput(text);
     };
 
     recorder.start();
 
     let silenceStart: number | null = null;
-    const silenceThreshold = 3; // seconds of silence to stop
-    const volumeThreshold = 5; // below this = silence
+    const silenceThreshold = 3;
+    const volumeThreshold = 5;
 
     intervalRef.current = window.setInterval(() => {
       analyser.getByteTimeDomainData(data);
@@ -195,8 +197,8 @@ export function App() {
         />
       </label>
       <div style={{ whiteSpace: 'pre-wrap', margin: '1em 0' }}>
-        {messages.map(m => (
-          <div>{m}</div>
+        {messages.map((m, i) => (
+          <div key={i}>{m}</div>
         ))}
       </div>
       <textarea
@@ -209,7 +211,7 @@ export function App() {
         🎙️ Record
       </button>
 
-      <button onClick={sendMessage} style={{ float: 'right' }}>
+      <button onClick={handleSendMessage} style={{ float: 'right' }}>
         Send
       </button>
     </div>

@@ -17,4 +17,5 @@ def execute_action(action_name: str, user_input: str, intent_data: dict):
     if action:
         return action(user_input, **intent_data['params'])
     print(f"[⚠️] Unknown action: {action_name}")
+    return None
 

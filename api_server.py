@@ -1,18 +1,17 @@
+import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi import Header, HTTPException, Depends
-from fastapi import File, UploadFile
+import whisper
+from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.staticfiles import StaticFiles
 
-from engine.profile import load_profile
-from engine.engine_config import load_settings
 from engine.agent_core import handle_input
 from engine.api_key_store import load_valid_api_keys
-import whisper
-import tempfile
+from engine.engine_config import load_settings
+from engine.profile import load_profile
 
 app = FastAPI()
 app.add_middleware(
@@ -60,6 +59,15 @@ async def transcribe(audio: UploadFile = File(...)):
             print("❌ Whisper failed:", e)
             return {"text": "[transcription failed]"}
     return {"text": result["text"]}
+
+@app.post("/query/stream")
+def query_stream(req: QueryRequest, _: str = Depends(verify_api_key)):
+    generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
+    return StreamingResponse(generator, media_type="text/plain")
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
