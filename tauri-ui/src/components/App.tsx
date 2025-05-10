@@ -186,9 +186,8 @@ export function App() {
             className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-none bg-neutral-50"
           />
 
-          <div className={`flex items-center justify-between transition-all duration-300 ease-in-out
-              ${!showApiKey && !showMicSelector ? 'mb-0' : 'mb-1'}`}>
-            <div className="flex items-center gap-3 text-gray-500">
+          <div className={`flex items-center justify-between transition-all duration-300 ease-in-out min-h-8`}>
+            <div className="flex items-center gap-3 text-gray-500 flex-wrap">
               <button
                 onClick={() => {
                   setShowMicSelector(prev => {
@@ -211,6 +210,56 @@ export function App() {
               >
                 <Settings className="h-5 w-5 hover:text-black"/>
               </button>
+
+              <div>
+                <div
+                  className={`flex place-items-center justify-center transition-all duration-300 ease-in-out overflow-hidden mb-0 ${
+                    showApiKey ? 'opacity-100 w-full' : 'opacity-0 w-0 h-0'
+                  }`}
+                >
+                  <div className="pe-2">API:</div>
+                  <input
+                    type="password"
+                    className="w-full border border-zinc-300 rounded px-3 py-1 text-sm bg-neutral-50"
+                    value={apiKey}
+                    onInput={e => setApiKey((e.target as HTMLInputElement).value)}
+                    placeholder="API Key"
+                  />
+                </div>
+
+                <div
+                  className={`flex transition-all duration-300 ease-in-out overflow-hidden mb-0 ${
+                    showMicSelector ? 'opacity-100 w-full' : 'opacity-0 w-0 h-0'
+                  }`}
+                >
+                  <select
+                    value={micDeviceId}
+                    onChange={e => {
+                      const id = e.currentTarget.value;
+                      setMicDeviceId(id);
+                      void testMic(id);
+                    }}
+                    className="w-40 border border-zinc-300 rounded p-1 text-sm bg-neutral-50"
+                  >
+                    <option value="">(Default Microphone)</option>
+                    {micDevices.map((d, i) => (
+                      <option key={i} value={d.deviceId}>
+                        {d.label || `Mic ${i}`}
+                      </option>
+                    ))}
+                  </select>
+                  {micTestStatus && (
+                    <div className="text-xs px-2 self-center flex w-34 text-nowrap">
+                      Mic Test: {micTestStatus === 'success'
+                      ? '✅ Working'
+                      : micTestStatus === 'fail'
+                        ? '❌ No input'
+                        : '⏳ Testing...'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
 
             <div className="flex items-center gap-3 text-gray-500">
@@ -240,52 +289,9 @@ export function App() {
             </div>
           </div>
 
-          <div
-            className={`flex transition-all duration-300 ease-in-out overflow-hidden mb-0 ${
-              showMicSelector ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
-            }`}
-          >
-            <select
-              value={micDeviceId}
-              onChange={e => {
-                const id = e.currentTarget.value;
-                setMicDeviceId(id);
-                void testMic(id);
-              }}
-              className="w-1/2 border border-zinc-300 rounded p-2 text-sm bg-neutral-50"
-            >
-              <option value="">(Default Microphone)</option>
-              {micDevices.map((d, i) => (
-                <option key={i} value={d.deviceId}>
-                  {d.label || `Mic ${i}`}
-                </option>
-              ))}
-            </select>
-            {micTestStatus && (
-              <div className="text-xs w-1/2 px-2 self-center flex">
-                Mic Test: {micTestStatus === 'success'
-                ? '✅ Working'
-                : micTestStatus === 'fail'
-                  ? '❌ No input'
-                  : '⏳ Testing...'}
-              </div>
-            )}
-          </div>
 
-          <div
-            className={`flex place-items-center justify-center transition-all duration-300 ease-in-out overflow-hidden mb-0 ${
-              showApiKey ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'
-            }`}
-          >
-            <div className="pe-2">API:</div>
-            <input
-              type="password"
-              className="w-full border border-zinc-300 rounded px-3 py-2 text-sm bg-neutral-50"
-              value={apiKey}
-              onInput={e => setApiKey((e.target as HTMLInputElement).value)}
-              placeholder="API Key"
-            />
-          </div>
+
+
         </div>
       </main>
     </div>
