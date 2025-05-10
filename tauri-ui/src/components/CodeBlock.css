@@ -1,0 +1,46 @@
+.code-block-container {
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+
+.code-toolbar {
+  padding: 0.3rem 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: sans-serif;
+}
+
+.language-label {
+  text-transform: capitalize;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 0.50rem;
+}
+
+code {
+  display: block;
+  white-space: pre;
+}
+
+/* Syntax Tokens */
+code span.comment  { color: #999; font-style: italic; }
+code span.keyword  { color: #005cc5; font-weight: 600; }
+code span.string   { color: #22863a; }
+code span.number   { color: #b76b02; }
+code span.builtin  { color: #0366d6; }
+code span.method   { color: #6f42c1; }

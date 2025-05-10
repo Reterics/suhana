@@ -7,6 +7,9 @@
 
 > Suhana _(수하나)_ is your self-hosted AI companion: a modular chat agent with a personality, local knowledge base, and the ability to run commands — all without giving away your data.
 
+
+![showcase_readme.gif](assets/showcase_readme.gif)
+
 ---
 
 ## ✨ Features
@@ -49,13 +52,13 @@ You need **Python 3.11+** installed. Then choose one of the following:
    ollama run llama3
    ```
    > Other available models include:
-   > 
-   > - `mistral` – lightweight and fast  
-   > - `llama3` – larger and more capable  
-   > - `gemma` – Google’s open model  
-   > - `phi` – compact and smart  
-   > - `codellama` – optimized for coding tasks  
-   > - `llava` – for multimodal (image + text) input  
+   >
+   > - `mistral` – lightweight and fast
+   > - `llama3` – larger and more capable
+   > - `gemma` – Google’s open model
+   > - `phi` – compact and smart
+   > - `codellama` – optimized for coding tasks
+   > - `llava` – for multimodal (image + text) input
 
 3. You can change model in `settings.template.json` or at runtime.
 
