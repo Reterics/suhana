@@ -1,33 +1,46 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
-import {useChat} from "../context/ChatContext.tsx";
+import { useChat } from '../context/ChatContext.tsx';
+import {
+  Mic,
+  TestTube,
+  SendHorizontal,
+  Menu,
+  Settings
+} from 'lucide-preact';
 
 export function App() {
   const {
-    apiKey,
-    setApiKey,
-    apiReady,
-    error,
-    conversationList,
-    loadConversation,
-    messages,
-    setMessages,
-    sendStreamingMessage,
-    transcribe
+    apiKey, setApiKey,
+    apiReady, error,
+    conversationList, loadConversation,
+    messages, setMessages,
+    sendStreamingMessage, transcribe
   } = useChat();
 
   const [input, setInput] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [volume, setVolume] = useState(0);
   const [micDeviceId, setMicDeviceId] = useState<string>('');
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [micTestStatus, setMicTestStatus] = useState<'pending' | 'success' | 'fail' | null>(null);
+  const [showMicSelector, setShowMicSelector] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const segmentCount = 10;
+  const activeSegments = Math.round(Math.min(volume * 0.2, segmentCount));
+
   const intervalRef = useRef<number>();
 
   useEffect(() => {
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      const mics = devices.filter(d => d.kind === 'audioinput');
-      setMicDevices(mics);
-    });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    navigator.mediaDevices.enumerateDevices().then(devices =>
+      setMicDevices(devices.filter(d => d.kind === 'audioinput'))
+    );
   }, []);
 
   if (!apiReady) {
@@ -41,7 +54,10 @@ export function App() {
 
   async function testMic(deviceId: string) {
     setMicTestStatus('pending');
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+    const constraints = deviceId
+      ? { audio: { deviceId: { exact: deviceId } } }
+      : { audio: true };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     const context = new AudioContext();
     const source = context.createMediaStreamSource(stream);
     const analyser = context.createAnalyser();
@@ -91,6 +107,7 @@ export function App() {
   }
 
   async function startRecording() {
+    setRecording(true);
     const constraints = micDeviceId ? { deviceId: { exact: micDeviceId } } : true;
     const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
     const context = new AudioContext();
@@ -106,6 +123,7 @@ export function App() {
     recorder.onstop = async () => {
       clearInterval(intervalRef.current);
       setVolume(0);
+      setRecording(false);
       stream.getTracks().forEach(track => track.stop());
       const blob = new Blob(chunks, { type: 'audio/webm' });
       const text = await transcribe(blob);
@@ -132,74 +150,142 @@ export function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden text-gray-800 bg-white">
+    <div className="flex h-screen w-screen bg-neutral-50 text-gray-800">
       <Sidebar
         conversations={conversationList}
         onSelectConversation={loadConversation}
+        hidden={!sidebarOpen}
+        toggle={() => setSidebarOpen(!sidebarOpen)}
       />
-      <main className="flex-1 flex flex-col p-6 overflow-hidden">
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Select Microphone</label>
+      <main className="flex-1 flex flex-col h-full">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-b-gray-300 bg-white text-sm">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)}><Menu className="h-5 w-5 text-gray-500" /></button>
+        </div>
+
+        <div className="flex-1 flex-col overflow-y-auto px-4 py-3 space-y-2 text-sm">
+          {messages.map((m, i) => (
+            <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
+              <span className={`inline-block px-3 py-2 rounded shadow-sm ${
+                m.role === 'user'
+                  ? 'bg-zinc-700 text-white'
+                  : 'bg-neutral-200 text-zinc-900'
+              }`}>
+                {m.content}
+              </span>
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="p-3 border-t border-t-gray-300 bg-white space-y-1">
+          <textarea
+            rows={2}
+            value={input}
+            placeholder="Type a message..."
+            onInput={e => setInput((e.target as HTMLInputElement).value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-none bg-neutral-50"
+          />
+
+          <div className={`flex items-center justify-between transition-all duration-300 ease-in-out
+              ${!showApiKey && !showMicSelector ? 'mb-0' : 'mb-1'}`}>
+            <div className="flex items-center gap-3 text-gray-500">
+              <button
+                onClick={() => {
+                  setShowMicSelector(prev => {
+                    setShowApiKey(false);
+                    return !prev;
+                  });
+                }}
+                title="Microphone"
+              >
+                <TestTube className="h-5 w-5 hover:text-black"/>
+              </button>
+              <button
+                onClick={() => {
+                  setShowApiKey(prev => {
+                    setShowMicSelector(false);
+                    return !prev;
+                  });
+                }}
+                title="Settings"
+              >
+                <Settings className="h-5 w-5 hover:text-black"/>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 text-gray-500">
+              {recording && (
+              <div className="flex h-4 w-28 max-w-full">
+                {Array.from({ length: segmentCount }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-full h-full ${
+                      i < activeSegments ? 'bg-green-500' : 'bg-gray-200'
+                    }`}
+                  />
+                ))}
+              </div>
+              )}
+
+              <button onClick={startRecording} title="Record">
+                <Mic className="h-5 w-5 hover:text-black"/>
+              </button>
+              <button
+                onClick={handleSendMessage}
+                className="text-white bg-black p-2 rounded hover:bg-gray-800"
+                title="Send"
+              >
+                <SendHorizontal className="h-4 w-4"/>
+              </button>
+            </div>
+          </div>
+
+          <div
+            className={`flex transition-all duration-300 ease-in-out overflow-hidden mb-0 ${
+              showMicSelector ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
             <select
-              className="w-full border rounded p-2 text-sm"
               value={micDeviceId}
               onChange={e => {
                 const id = e.currentTarget.value;
                 setMicDeviceId(id);
-                if (id) void testMic(id);
+                void testMic(id);
               }}
+              className="w-1/2 border border-zinc-300 rounded p-2 text-sm bg-neutral-50"
             >
-              <option value="">(Default)</option>
+              <option value="">(Default Microphone)</option>
               {micDevices.map((d, i) => (
-                <option key={i} value={d.deviceId}>{d.label || `Mic ${i}`}</option>
+                <option key={i} value={d.deviceId}>
+                  {d.label || `Mic ${i}`}
+                </option>
               ))}
             </select>
             {micTestStatus && (
-              <div className="mt-1 text-sm">
-                Mic Test: {micTestStatus === 'success' ? '✅ Working' : micTestStatus === 'fail' ? '❌ No input' : '⏳ Testing...'}
+              <div className="text-xs w-1/2 px-2 self-center flex">
+                Mic Test: {micTestStatus === 'success'
+                ? '✅ Working'
+                : micTestStatus === 'fail'
+                  ? '❌ No input'
+                  : '⏳ Testing...'}
               </div>
             )}
-            <div className="w-full h-2 bg-gray-200 mt-2 rounded overflow-hidden">
-              <div className="h-full bg-green-500" style={{ width: `${Math.min(volume * 3, 100)}%` }} />
-            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">API Key</label>
+          <div
+            className={`flex place-items-center justify-center transition-all duration-300 ease-in-out overflow-hidden mb-0 ${
+              showApiKey ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="pe-2">API:</div>
             <input
               type="password"
-              className="w-full border rounded p-2 text-sm"
+              className="w-full border border-zinc-300 rounded px-3 py-2 text-sm bg-neutral-50"
               value={apiKey}
               onInput={e => setApiKey((e.target as HTMLInputElement).value)}
               placeholder="API Key"
             />
           </div>
-        </div>
-
-        <div className="flex-1 border rounded p-4 mb-4 overflow-y-auto space-y-2 bg-gray-50">
-          {messages.map((m, i) => (
-            <div key={i} className={m.role === 'user' ? 'text-right text-black' : 'text-left text-gray-600'}>
-              {m.content}
-            </div>
-          ))}
-        </div>
-
-        <textarea
-          className="w-full border rounded p-2 text-sm"
-          rows={3}
-          value={input}
-          onInput={e => setInput((e.target as HTMLInputElement).value)}
-          placeholder="Type your message..."
-        ></textarea>
-
-        <div className="flex justify-between pt-4">
-          <button onClick={startRecording} className="border px-4 py-2 rounded text-sm hover:bg-gray-100">
-            🎙️ Record
-          </button>
-          <button onClick={handleSendMessage} className="bg-black text-white px-4 py-2 rounded text-sm hover:bg-gray-800">
-            ➤ Send
-          </button>
         </div>
       </main>
     </div>

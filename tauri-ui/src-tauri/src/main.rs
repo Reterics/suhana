@@ -51,5 +51,4 @@ fn main() {
     })
     .run(tauri::generate_context!())
     .expect("error while running app");
-    // tauri_ui_lib::run()
 }
