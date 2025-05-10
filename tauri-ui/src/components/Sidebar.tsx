@@ -1,5 +1,5 @@
 import { JSX } from 'preact/jsx-runtime';
-import { ConversationMeta } from '../hooks/useFastAPI';
+import { ConversationMeta } from '../context/ChatContext';
 
 interface SidebarProps {
   conversations: ConversationMeta[];

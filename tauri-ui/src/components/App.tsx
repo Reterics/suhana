@@ -1,31 +1,27 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
-import {ConversationMeta, useFastAPI} from '../hooks/useFastAPI.ts';
-import {Message} from "../context/ConversationContext.tsx";
+import {useChat} from "../context/ChatContext.tsx";
 
 export function App() {
-  const [apiKey, setApiKey] = useState(localStorage.getItem('suhana_key') || 'YOUR_API_KEY_HERE');
+  const {
+    apiKey,
+    setApiKey,
+    apiReady,
+    error,
+    conversationList,
+    loadConversation,
+    messages,
+    setMessages,
+    sendStreamingMessage,
+    transcribe
+  } = useChat();
+
   const [input, setInput] = useState('');
   const [volume, setVolume] = useState(0);
   const [micDeviceId, setMicDeviceId] = useState<string>('');
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [micTestStatus, setMicTestStatus] = useState<'pending' | 'success' | 'fail' | null>(null);
   const intervalRef = useRef<number>();
-  const { apiReady, error, sendStreamingMessage, transcribe, listConversations, loadConversation, history } = useFastAPI('http://localhost:8000', apiKey);
-  const [conversationList, setConversationList] = useState<ConversationMeta[]>([]);
-  const [messages, setMessages] = useState<Message[]>(history);
-
-  useEffect(() => {
-    if (history) {
-      setMessages(history)
-    }
-  }, [history]);
-
-  useEffect(() => {
-    if (apiReady && !error) {
-      listConversations().then(setConversationList);
-    }
-  }, [apiReady]);
 
   useEffect(() => {
     navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -34,8 +30,14 @@ export function App() {
     });
   }, []);
 
-  if (!apiReady) return <div className="flex items-center justify-center h-screen text-gray-400 text-xl"><img src='./suhana.png' className="h-10 me-2"/> Suhana is starting...</div>;
-  if (error) return <div className="flex items-center justify-center h-screen text-red-500 text-xl">{error}</div>;
+  if (!apiReady) {
+    return <div className="flex flex-col items-center justify-center h-screen text-gray-400 text-xl">
+      <div className="flex flex-row items-center">
+        <img src='./suhana.png' className="h-10 me-2" alt='Sohana logo'/> {error ? "Suhana failed" : "Suhana is starting..."}
+      </div>
+      <div className="text-base mt-2 max-w-1/2 text-wrap">{error && `Reason: ${error}`}</div>
+    </div>;
+  }
 
   async function testMic(deviceId: string) {
     setMicTestStatus('pending');
@@ -86,7 +88,6 @@ export function App() {
       });
     });
     setInput('');
-    localStorage.setItem('suhana_key', apiKey);
   }
 
   async function startRecording() {

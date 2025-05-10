@@ -1,6 +1,6 @@
 import { render } from 'preact';
-import { ConversationProvider } from './context/ConversationContext';
 import { App } from './components/App';
+import {ChatProvider} from "./context/ChatContext.tsx";
 import './style.css';
 
-render(<ConversationProvider><App /></ConversationProvider>, document.getElementById('app') as HTMLElement);
+render(<ChatProvider><App /></ChatProvider>, document.getElementById('app') as HTMLElement);
