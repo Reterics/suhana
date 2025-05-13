@@ -1,13 +1,12 @@
-from engine.action_store import execute_action
 from engine.engine_config import load_settings, switch_backend
 from engine.agent_core import handle_input
+from engine.tool_store import load_tools, match_and_run_tools
 from engine.voice import transcribe_audio, speak_text
 from engine.memory_store import add_memory_fact, recall_memory, forget_memory
-from engine.intent import detect_intent
 from engine.conversation_store import (
     create_new_conversation,
     load_conversation,
-    save_conversation, list_conversations, list_conversation_meta
+    save_conversation, list_conversation_meta
 )
 
 def run_agent():
@@ -17,6 +16,7 @@ def run_agent():
     stream = settings.get("streaming", False)
     conversation_id = create_new_conversation()
     profile = load_conversation(conversation_id)
+    tools = load_tools()
     name = "Suhana"
 
     print(f"Hello, I'm {name} — {'🦙' if backend == 'ollama' else '🤖'} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})\n")
@@ -80,11 +80,9 @@ def run_agent():
                 print(f"🧹 Removed {removed} memory entry(ies) matching '{keyword}'.\n")
                 continue
 
-            intent_data = detect_intent(user_input)
-            if intent_data["intent"]:
-                print(f"[🔎] Detected intent: {intent_data['intent']} → {intent_data['params']}")
-                result = execute_action(intent_data["action"], intent_data["params"], intent_data)
-                print(f"{name}: {result}\n")
+            action_data = match_and_run_tools(user_input, tools)
+            if action_data is not None:
+                print(f"{name}: {action_data}\n")
                 continue
 
             print("🎙️ Thinking...")

@@ -6,16 +6,16 @@
 
 ## 📚 Table of Contents
 
-1. [Overview](#overview)  
-2. [Core Features](#core-features)  
-3. [Architecture](#architecture)  
-4. [Technology Stack](#technology-stack)  
-5. [Folder Structure](#folder-structure)  
-6. [Agent Behavior](#agent-behavior)  
-7. [Knowledge Base Management](#knowledge-base-management)  
-8. [Command Execution](#command-execution)  
-9. [Modularity & Engine Switching](#modularity--engine-switching)  
-10. [Deployment & Portability](#deployment--portability)  
+1. [Overview](#overview)
+2. [Core Features](#core-features)
+3. [Architecture](#architecture)
+4. [Technology Stack](#technology-stack)
+5. [Folder Structure](#folder-structure)
+6. [Agent Behavior](#agent-behavior)
+7. [Knowledge Base Management](#knowledge-base-management)
+8. [Command Execution](#command-execution)
+9. [Modularity & Engine Switching](#modularity--engine-switching)
+10. [Deployment & Portability](#deployment--portability)
 11. [Future Ideas](#future-ideas)
 
 ---
@@ -28,12 +28,12 @@ Suhana is a character-driven AI agent capable of general conversation, task exec
 
 ## 2. Core Features
 
-- Conversational AI with a persistent **persona** ("Suhana")  
-- File-based **knowledge base** (markdown, text, code, etc.)  
-- Built-in **command execution** layer (send messages, update files, modify user profile)  
-- Supports **tool use** (e.g. web search or calling APIs)  
-- Swappable **AI engines** (LLaMA 3, Mistral, GPT, etc.)  
-- Works **offline** or optionally connects to the web  
+- Conversational AI with a persistent **persona** ("Suhana")
+- File-based **knowledge base** (markdown, text, code, etc.)
+- Built-in **command execution** layer (send messages, update files, modify user profile)
+- Supports **tool use** (e.g. web search or calling APIs)
+- Swappable **AI engines** (LLaMA 3, Mistral, GPT, etc.)
+- Works **offline** or optionally connects to the web
 - **Low-cost or free** to run, portable across environments
 
 ---
@@ -83,7 +83,7 @@ Core logic is handled by a control loop using reasoning + acting + memory update
  ├─ models/         # Prompt templates, system prompts
  ├─ knowledge/      # Docs, code, notes to ingest
  ├─ vectorstore/    # Index for semantic search
- ├─ actions/        # Executable commands (e.g., Python)
+ ├─ tools/          # Executable commands (e.g., Python)
  ├─ profile.json    # User memory, preferences
  └─ main.py         # Entrypoint to run the agent
 ```
@@ -92,18 +92,18 @@ Core logic is handled by a control loop using reasoning + acting + memory update
 
 ## 6. Agent Behavior
 
-- Starts a conversation loop with the user  
-- Maintains persona and context  
-- Uses embeddings to search indexed knowledge base  
-- Can optionally query the internet  
+- Starts a conversation loop with the user
+- Maintains persona and context
+- Uses embeddings to search indexed knowledge base
+- Can optionally query the internet
 - Executes registered commands if requested
 
 ---
 
 ## 7. Knowledge Base Management
 
-- Drop `.txt`, `.md`, `.pdf`, or code files into `/knowledge`  
-- Use `ingest.py` (or auto-ingestion) to re-index  
+- Drop `.txt`, `.md`, `.pdf`, or code files into `/knowledge`
+- Use `ingest.py` (or auto-ingestion) to re-index
 - Uses vector search to retrieve relevant chunks during conversation
 
 ---
@@ -111,9 +111,9 @@ Core logic is handled by a control loop using reasoning + acting + memory update
 ## 8. Command Execution
 
 Commands are registered as:
-- Python functions  
-- Shell or HTTP hooks  
-- YAML-defined triggers with parameters  
+- Python functions
+- Shell or HTTP hooks
+- YAML-defined triggers with parameters
 
 Example:
 ```python
@@ -127,27 +127,27 @@ def send_message(destination, content):
 ## 9. Modularity & Engine Switching
 
 AI models can be:
-- Run locally via **Ollama**  
-- Configured per session in `settings.json`  
+- Run locally via **Ollama**
+- Configured per session in `settings.json`
 - Swapped easily for future upgrade (e.g. LLaVA, Gemma, Mixtral)
 
 ---
 
 ## 10. Deployment & Portability
 
-- Entire project runs locally  
-- Easy to Dockerize for remote/server use  
-- No dependency on cloud APIs  
+- Entire project runs locally
+- Easy to Dockerize for remote/server use
+- No dependency on cloud APIs
 - Can run on any machine with Python + CPU/GPU
 
 ---
 
 ## 11. Future Ideas
 
-- GUI with Next.js or Electron  
-- Fine-tuned persona or memory vector store  
-- Multi-agent mode or background daemon  
-- Voice input/output support (Whisper, Coqui)  
+- GUI with Next.js or Electron
+- Fine-tuned persona or memory vector store
+- Multi-agent mode or background daemon
+- Voice input/output support (Whisper, Coqui)
 - Secure API for third-party integration
 
 ---
