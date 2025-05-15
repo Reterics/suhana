@@ -40,6 +40,8 @@ def load_conversation(conversation_id: str) -> dict:
 
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
+        data.setdefault("mode", "normal")
+        data.setdefault("project_path", None)
         data.update({k: meta[k] for k in PROFILE_META_KEYS})
         return data
 
@@ -56,7 +58,9 @@ def save_conversation(conversation_id: str, profile: dict):
         meta_doc = {
             "title": profile.get("title", history[0]['content'][0:15]),
             "created": profile.get("created", datetime.now().isoformat()),
-            "last_updated": datetime.now().isoformat()
+            "last_updated": datetime.now().isoformat(),
+            "mode": profile.get("mode", "normal"),
+            "project_path": profile.get("project_path", None)
         }
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_doc, f, indent=2)

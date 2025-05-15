@@ -29,6 +29,9 @@ def summarize_profile_for_prompt(profile) -> str:
     preferences = profile.get("preferences", {})
     name = profile.get("name", "User")
 
+    if profile.get("mode") == "development":
+        return f"You are Suhana, who speaks with {name} working on a project as AI Copilot. Help with code, suggest improvements, refactor cleanly."
+
     summary = f"You are Suhana, who speaks with {name}.\n"
     summary += "Communication preferences:\n"
 

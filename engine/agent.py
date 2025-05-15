@@ -1,5 +1,7 @@
+import subprocess
+
 from engine.engine_config import load_settings, switch_backend
-from engine.agent_core import handle_input
+from engine.agent_core import handle_input, current_vector_mode, get_vectorstore
 from engine.tool_store import load_tools, match_and_run_tools
 from engine.voice import transcribe_audio, speak_text
 from engine.memory_store import add_memory_fact, recall_memory, forget_memory
@@ -31,18 +33,18 @@ def run_agent():
 
             if not user_input.strip():
                 continue
-            if command in ("exit", "quit"):
+            elif command in ("exit", "quit"):
                 print("Goodbye.")
                 break
-            if command == "voice on":
+            elif command == "voice on":
                 voice_mode = True
                 print("🎙️ Voice mode enabled.")
                 continue
-            if command == "voice off":
+            elif command == "voice off":
                 voice_mode = False
                 print("🛑 Voice mode disabled.")
                 continue
-            if command == "!load":
+            elif command == "!load":
                 conversations = list_conversation_meta()
                 print("📜 Available conversations:")
                 for i, meta in enumerate(conversations):
@@ -55,12 +57,29 @@ def run_agent():
                 else:
                     print("❌ Invalid selection.")
                 continue
-            if command.startswith("switch "):
+            elif command.startswith("switch "):
                 backend = switch_backend(command.split(" ")[1], settings)
                 continue
             elif command == "engine":
                 print(
                     f"🔧 Current engine: {'🦙' if backend == 'ollama' else '🤖'} {backend.upper()} ({settings.get('llm_model') if backend == 'ollama' else settings.get('openai_model')})")
+                continue
+            elif command.startswith("!mode "):
+                profile["mode"] = command.split(" ", 1)[1].strip()
+                print(f"🔧 Mode set to: {profile['mode']}")
+                if profile["mode"] != current_vector_mode:
+                    vectorstore = get_vectorstore(profile)
+                continue
+            elif command.startswith("!project "):
+                profile["project_path"] = command.split(" ", 1)[1].strip()
+                print(f"📂 Project set to: {profile['project_path']}")
+                continue
+            elif command == "!reindex":
+                path = profile.get("project_path")
+                if path:
+                    subprocess.run(["python", "ingest_project.py", path])
+                else:
+                    print("⚠️ Set project path first with !project")
                 continue
             if user_input.startswith("!remember "):
                 fact = user_input[len("!remember "):]

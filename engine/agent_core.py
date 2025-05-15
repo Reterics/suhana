@@ -12,17 +12,37 @@ from engine.memory_store import search_memory
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 VECTORSTORE_PATH = Path(__file__).parent.parent / "vectorstore"
 INDEX_FILE = VECTORSTORE_PATH / "index.faiss"
+current_vector_mode = None
 
-def get_vectorstore():
-    if not INDEX_FILE.exists():
-        print("📭 Vectorstore not found — running ingest.py...")
-        subprocess.run(["python", "ingest.py"], check=True)
+def get_vectorstore(profile = None):
+    global current_vector_mode
+    global vectorstore
+    mode = current_vector_mode
+    path = None
+    if profile is not None:
+        mode = profile.get("mode", "normal")
+        path = profile.get("project_path", None)
+    if mode is None or path is None:
+        mode = "normal"
 
-    return FAISS.load_local(
-        str(VECTORSTORE_PATH),
-        embedding_model,
-        allow_dangerous_deserialization=True
-    )
+    if mode == current_vector_mode:
+        return vectorstore
+
+    current_vector_mode = mode
+    if mode == "development" and profile.get("project_path"):
+        path = Path(profile["project_path"]).name
+    else:
+        path = VECTORSTORE_PATH
+
+    if not Path(f"{path}/index.faiss").exists():
+        if mode == "development":
+            print("📭 Vectorstore not found — please run ingest_project.py.")
+            return None
+        elif mode == "normal":
+            print("📭 Vectorstore not found — running ingest.py...")
+            subprocess.run(["python", "ingest.py"], check=True)
+
+    return FAISS.load_local(str(path), embedding_model, allow_dangerous_deserialization=True)
 
 vectorstore = get_vectorstore()
 
