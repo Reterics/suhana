@@ -1,7 +1,7 @@
 import { JSX } from 'preact/jsx-runtime';
 import { useEffect, useRef } from 'preact/hooks';
-import {ChatMessage} from "../context/ChatContext.tsx";
-import {CodeBlock} from "./CodeBlock.tsx";
+import { ChatMessage } from '../context/ChatContext.tsx';
+import { CodeBlock } from './CodeBlock.tsx';
 
 interface Props {
   messages: ChatMessage[];
@@ -44,11 +44,13 @@ export function ChatMessages({ messages }: Props) {
     <div className="flex-1 flex-col overflow-y-auto px-4 py-3 space-y-2 text-sm">
       {messages.map((m, i) => (
         <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
-          <div className={`inline-block max-w-full px-3 py-2 rounded shadow-sm whitespace-pre-wrap ${
-            m.role === 'user'
-              ? 'bg-zinc-700 text-white'
-              : 'bg-neutral-200 text-zinc-900'
-          }`}>
+          <div
+            className={`inline-block max-w-full px-3 py-2 rounded shadow-sm whitespace-pre-wrap ${
+              m.role === 'user'
+                ? 'bg-zinc-700 text-white'
+                : 'bg-neutral-200 text-zinc-900'
+            }`}
+          >
             {parseContent(m.content)}
           </div>
         </div>

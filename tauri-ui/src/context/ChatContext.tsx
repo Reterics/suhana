@@ -1,11 +1,17 @@
 import { createContext } from 'preact';
-import {StateUpdater, useContext, useEffect, useRef, useState} from 'preact/hooks';
-import {Dispatch} from "preact/compat";
+import {
+  StateUpdater,
+  useContext,
+  useEffect,
+  useRef,
+  useState
+} from 'preact/hooks';
+import { Dispatch } from 'preact/compat';
 
 export type ChatMessage = {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+};
 
 interface ChatState {
   conversationId: string;
@@ -35,7 +41,7 @@ export interface ConversationMeta {
 
 const ChatContext = createContext<ChatState | null>(null);
 
-const BASE_URL = 'http://localhost:8000';
+export const BASE_URL = 'http://localhost:8000';
 
 async function fetchWithKey(
   url: string,
@@ -44,7 +50,7 @@ async function fetchWithKey(
   options: RequestInit = {},
   maxRetries = 3,
   retryDelayMs = 1000
-): Promise<any | null> {
+): Promise<Record<string, unknown> | null | undefined> {
   const isGet = (options.method || 'GET').toUpperCase() === 'GET';
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -54,7 +60,7 @@ async function fetchWithKey(
           ...(options.headers || {}),
           ...(apiKey ? { 'x-api-key': apiKey } : {})
         }
-      })
+      });
       if (!res?.ok) {
         const text = await res.text().catch(() => res.statusText);
         throw new Error(text || 'Fetch failed');
@@ -63,7 +69,9 @@ async function fetchWithKey(
       return res.json();
     } catch (err: unknown) {
       if (!isGet || attempt === maxRetries) {
-        setError(`${(err as Error).message || 'Fetch failed'} URL: ${url.replace(BASE_URL, '')}`);
+        setError(
+          `${(err as Error).message || 'Fetch failed'} URL: ${url.replace(BASE_URL, '')}`
+        );
         return null;
       }
       await new Promise(resolve => setTimeout(resolve, retryDelayMs));
@@ -71,12 +79,19 @@ async function fetchWithKey(
   }
 }
 
-
-export function ChatProvider({ children }: { children: preact.ComponentChildren }) {
+export function ChatProvider({
+  children
+}: {
+  children: preact.ComponentChildren;
+}) {
   const [conversationId, setConversationId] = useState('');
-  const [conversationList, setConversationList] = useState<ConversationMeta[]>([]);
+  const [conversationList, setConversationList] = useState<ConversationMeta[]>(
+    []
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [apiKey, setApiKey] = useState(localStorage.getItem('suhana_key') || '');
+  const [apiKey, setApiKey] = useState(
+    localStorage.getItem('suhana_key') || ''
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const lastCheckedKey = useRef<string | null>(null);
@@ -85,38 +100,58 @@ export function ChatProvider({ children }: { children: preact.ComponentChildren 
   useEffect(() => {
     if (!apiKey || apiKey === lastCheckedKey.current) return;
     lastCheckedKey.current = apiKey;
-    void listConversations()
-      .then(() => setLoading(false))
+    void listConversations().then(() => setLoading(false));
   }, [apiKey]);
 
   const listConversations = async () => {
-    const conversations =  await fetchWithKey(`${BASE_URL}/conversations`, apiKey, setError)
+    const conversations = await fetchWithKey(
+      `${BASE_URL}/conversations`,
+      apiKey,
+      setError
+    );
     if (Array.isArray(conversations)) {
       setConversationList(conversations);
     }
   };
 
   const loadConversation = async (id: string) => {
-    const data = await fetchWithKey(`${BASE_URL}/conversations/${id}`, apiKey, setError)
+    const data = await fetchWithKey(
+      `${BASE_URL}/conversations/${id}`,
+      apiKey,
+      setError
+    );
     setConversationId(id);
-    setMessages(data?.history || []);
+    setMessages(data?.history as ChatMessage[] || []);
   };
 
-  const sendMessage = async (input: string, backend = 'ollama') => {
+  const sendMessage = async (
+    input: string,
+    backend = 'ollama',
+    mode?: string,
+    project_path?: string
+  ) => {
     const data = await fetchWithKey(`${BASE_URL}/query`, apiKey, setError, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ input, backend, conversation_id: conversationId })
+      body: JSON.stringify({
+        input,
+        backend,
+        conversation_id: conversationId,
+        mode,
+        project_path
+      })
     });
-    return data?.response;
+    return data?.response as string;
   };
 
   const sendStreamingMessage = async (
     input: string,
     onToken: (token: string) => void,
-    backend = 'ollama'
+    backend = 'ollama',
+    mode?: string,
+    project_path?: string
   ) => {
     const res = await fetch(`${BASE_URL}/query/stream`, {
       method: 'POST',
@@ -124,7 +159,13 @@ export function ChatProvider({ children }: { children: preact.ComponentChildren 
         'Content-Type': 'application/json',
         ...(apiKey ? { 'x-api-key': apiKey } : {})
       },
-      body: JSON.stringify({ input, backend, conversation_id: conversationId })
+      body: JSON.stringify({
+        input,
+        backend,
+        conversation_id: conversationId,
+        mode,
+        project_path
+      })
     });
     const reader = res.body?.getReader();
     const decoder = new TextDecoder('utf-8');
@@ -138,12 +179,17 @@ export function ChatProvider({ children }: { children: preact.ComponentChildren 
   const transcribe = async (blob: Blob): Promise<string> => {
     const form = new FormData();
     form.append('audio', blob, 'speech.webm');
-    const data = await fetchWithKey(`${BASE_URL}/transcribe`, apiKey, setError, {
-      method: 'POST',
-      headers: apiKey ? { 'x-api-key': apiKey } : {},
-      body: form
-    });
-    return data.text;
+    const data = await fetchWithKey(
+      `${BASE_URL}/transcribe`,
+      apiKey,
+      setError,
+      {
+        method: 'POST',
+        headers: apiKey ? { 'x-api-key': apiKey } : {},
+        body: form
+      }
+    );
+    return data?.text as string || '';
   };
 
   return (

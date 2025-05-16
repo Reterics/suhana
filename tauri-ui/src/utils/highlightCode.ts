@@ -2,9 +2,7 @@ import { highlighterConfig } from './highlighterConfig';
 
 export function highlightCode(language: string, rawCode: string): string {
   const escape = (text: string) =>
-    text.replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   const rules = highlighterConfig[language];
   if (!rules) return escape(rawCode);
@@ -41,10 +39,11 @@ export function highlightCode(language: string, rawCode: string): string {
     segments = newSegments;
   }
 
-  return segments.map(seg =>
-    seg.className
-      ? `<span class="${seg.className}">${escape(seg.text)}</span>`
-      : escape(seg.text)
-  ).join('');
+  return segments
+    .map(seg =>
+      seg.className
+        ? `<span class="${seg.className}">${escape(seg.text)}</span>`
+        : escape(seg.text)
+    )
+    .join('');
 }
-

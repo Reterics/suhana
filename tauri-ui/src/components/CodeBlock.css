@@ -29,7 +29,7 @@
 pre {
   margin: 0;
   overflow-x: auto;
-  padding: 0.50rem;
+  padding: 0.5rem;
 }
 
 code {
@@ -38,9 +38,23 @@ code {
 }
 
 /* Syntax Tokens */
-code span.comment  { color: #999; font-style: italic; }
-code span.keyword  { color: #005cc5; font-weight: 600; }
-code span.string   { color: #22863a; }
-code span.number   { color: #b76b02; }
-code span.builtin  { color: #0366d6; }
-code span.method   { color: #6f42c1; }
+code span.comment {
+  color: #999;
+  font-style: italic;
+}
+code span.keyword {
+  color: #005cc5;
+  font-weight: 600;
+}
+code span.string {
+  color: #22863a;
+}
+code span.number {
+  color: #b76b02;
+}
+code span.builtin {
+  color: #0366d6;
+}
+code span.method {
+  color: #6f42c1;
+}

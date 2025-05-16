@@ -72,6 +72,7 @@ def run_agent():
                 continue
             elif command.startswith("!project "):
                 profile["project_path"] = command.split(" ", 1)[1].strip()
+                profile["mode"] = "development"
                 print(f"📂 Project set to: {profile['project_path']}")
                 continue
             elif command == "!reindex":

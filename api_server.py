@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
 
+import os
 import whisper
 from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,7 @@ from engine.conversation_store import (
     load_conversation,
     save_conversation, list_conversation_meta
 )
+from engine.agent_core import get_vectorstore
 
 app = FastAPI()
 app.add_middleware(
@@ -42,6 +44,8 @@ class QueryRequest(BaseModel):
     input: str
     backend: str = "ollama"
     conversation_id: str
+    mode: str | None = None
+    project_path: str | None = None
 
 @app.post("/query")
 def query(req: QueryRequest, _: str = Depends(verify_api_key)):
@@ -77,6 +81,19 @@ def get_conversations():
 def get_conversation(conversation_id: str):
     return load_conversation(conversation_id)
 
+@app.post("/conversations/{conversation_id}")
+def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(verify_api_key)):
+    profile = load_conversation(req.conversation_id)
+
+    if req.mode:
+        profile["mode"] = req.mode
+    if req.project_path:
+        profile["project_path"] = req.project_path
+        profile["mode"] = "development"
+        get_vectorstore(profile)
+
+    return {"conversation_id": conversation_id, "mode": profile["mode"], "project_path": profile["project_path"] }
+
 @app.post("/conversations/new")
 def new_conversation():
     return {"conversation_id": create_new_conversation()}
@@ -84,6 +101,15 @@ def new_conversation():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/browse-folders")
+def browse_folders(path: str = ""):
+    base = Path("./").resolve()
+    target = (base / path).resolve()
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(400, "Invalid path")
+    subdirs = [f.name for f in target.iterdir() if f.is_dir()]
+    return {"current": str(target), "subfolders": subdirs, "separator": os.sep}
 
 if __name__ == "__main__":
     import uvicorn
