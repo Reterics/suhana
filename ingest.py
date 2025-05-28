@@ -1,35 +1,60 @@
+"""
+Knowledge Base Indexer for Suhana AI Assistant
+
+This module indexes documents from the knowledge directory into a vector store for semantic search.
+It supports text and markdown files.
+
+Usage:
+    python ingest.py
+"""
+
 import os
+import sys
+from pathlib import Path
+
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import CharacterTextSplitter
+from engine.utils import configure_logging, get_embedding_model, save_vectorstore
 
-knowledge_dir = "knowledge"
-embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-text_splitter = CharacterTextSplitter(chunk_size=512, chunk_overlap=64)
+# Configure logging
+logger = configure_logging(__name__)
 
-docs = []
+def index_knowledge_base():
+    """Index documents from the knowledge directory into a vector store."""
+    knowledge_dir = Path("knowledge")
+    embedding_model = get_embedding_model("all-MiniLM-L6-v2")
+    text_splitter = CharacterTextSplitter(chunk_size=512, chunk_overlap=64)
 
-if not os.path.isdir(knowledge_dir):
-    print("❌ 'knowledge/' folder not found.")
-    exit(1)
+    docs = []
 
-for fname in os.listdir(knowledge_dir):
-    path = os.path.join(knowledge_dir, fname)
-    if fname.endswith((".txt", ".md")) and os.path.isfile(path):
-        print(f"📄 Loading: {fname}")
-        loader = TextLoader(path, encoding="utf-8")
-        try:
-            split_docs = loader.load_and_split(text_splitter)
-            docs.extend(split_docs)
-        except Exception as e:
-            print(f"⚠️ Failed to load {fname}: {e}")
+    if not knowledge_dir.is_dir():
+        logger.error("❌ 'knowledge/' folder not found.")
+        return False
 
-if not docs:
-    print("❌ No documents found or failed to process any.")
-    exit(1)
+    for file_path in knowledge_dir.iterdir():
+        if file_path.suffix.lower() in (".txt", ".md") and file_path.is_file():
+            logger.info(f"📄 Loading: {file_path.name}")
+            loader = TextLoader(str(file_path), encoding="utf-8")
+            try:
+                split_docs = loader.load_and_split(text_splitter)
+                docs.extend(split_docs)
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load {file_path.name}: {e}")
 
+    if not docs:
+        logger.error("❌ No documents found or failed to process any.")
+        return False
 
-vectorstore = FAISS.from_documents(docs, embedding_model)
-vectorstore.save_local("vectorstore")
-print("✅ Vectorstore updated.")
+    save_vectorstore(docs, embedding_model, "vectorstore")
+    logger.info("✅ Vectorstore updated.")
+    return True
+
+def main():
+    """Main entry point for the script."""
+    success = index_knowledge_base()
+    if not success:
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

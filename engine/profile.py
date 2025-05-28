@@ -9,7 +9,7 @@ default_profile_meta = {
     "history": [],
     "preferences": {
         "preferred_language": "English",
-        "communication_style": "friendly, brief, couple of sentente max",
+        "communication_style": "friendly, brief, couple of sentences max",
         "focus": "general"
     }
 }

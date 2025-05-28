@@ -1,7 +1,7 @@
 import subprocess
 
 from engine.engine_config import load_settings, switch_backend
-from engine.agent_core import handle_input, current_vector_mode, get_vectorstore
+from engine.agent_core import (handle_input, vectorstore_manager)
 from engine.tool_store import load_tools, match_and_run_tools
 from engine.voice import transcribe_audio, speak_text
 from engine.memory_store import add_memory_fact, recall_memory, forget_memory
@@ -67,18 +67,24 @@ def run_agent():
             elif command.startswith("!mode "):
                 profile["mode"] = command.split(" ", 1)[1].strip()
                 print(f"🔧 Mode set to: {profile['mode']}")
-                if profile["mode"] != current_vector_mode:
-                    vectorstore = get_vectorstore(profile)
+                if profile["mode"] != vectorstore_manager.current_vector_mode:
+                    vectorstore_manager.get_vectorstore(profile)
                 continue
             elif command.startswith("!project "):
                 profile["project_path"] = command.split(" ", 1)[1].strip()
                 profile["mode"] = "development"
                 print(f"📂 Project set to: {profile['project_path']}")
+                # Load the development vectorstore
+                vectorstore_manager.get_vectorstore(profile)
                 continue
             elif command == "!reindex":
                 path = profile.get("project_path")
                 if path:
                     subprocess.run(["python", "ingest_project.py", path])
+                    # Reset the vectorstore to force reloading
+                    vectorstore_manager.vectorstore = None
+                    vectorstore_manager.get_vectorstore(profile)
+                    print("✅ Vectorstore reloaded.")
                 else:
                     print("⚠️ Set project path first with !project")
                 continue
