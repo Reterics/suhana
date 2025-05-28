@@ -164,22 +164,13 @@ export function App() {
       </main>
 
       {folderSelectorOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 z-40 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-[90%] max-w-xl relative z-50">
-            <FolderSelector
+        <FolderSelector
               onSelect={path => {
                 setProjectPath(path);
                 setFolderSelectorOpen(false);
               }}
+              onClose={() => setFolderSelectorOpen(false)}
             />
-            <button
-              onClick={() => setFolderSelectorOpen(false)}
-              className="absolute top-2 right-2 text-gray-500 hover:text-black"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
       )}
     </div>
   );
