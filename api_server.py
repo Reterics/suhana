@@ -18,7 +18,7 @@ from engine.conversation_store import (
     load_conversation,
     save_conversation, list_conversation_meta
 )
-from engine.agent_core import get_vectorstore
+from engine.agent_core import vectorstore_manager
 
 app = FastAPI()
 app.add_middleware(
@@ -90,7 +90,34 @@ def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(
     if req.project_path:
         profile["project_path"] = req.project_path
         profile["mode"] = "development"
-        get_vectorstore(profile)
+        vectorstore_manager.get_vectorstore(profile)
+
+        # Update recent projects in settings
+        try:
+            settings_path = Path("settings.json")
+            settings_data = {}
+            if settings_path.exists():
+                import json
+                with open(settings_path, "r") as f:
+                    settings_data = json.load(f)
+
+            # Add current project to recent projects
+            recent_projects = settings_data.get("recent_projects", [])
+            # Remove if already exists (to move it to the top)
+            if req.project_path in recent_projects:
+                recent_projects.remove(req.project_path)
+            # Add to the beginning of the list
+            recent_projects.insert(0, req.project_path)
+            # Keep only the 10 most recent projects
+            recent_projects = recent_projects[:10]
+            settings_data["recent_projects"] = recent_projects
+
+            # Save updated settings
+            with open(settings_path, "w") as f:
+                json.dump(settings_data, f, indent=2)
+        except Exception:
+            # Silently fail if we can't update settings
+            pass
 
     return {"conversation_id": conversation_id, "mode": profile["mode"], "project_path": profile["project_path"] }
 
@@ -104,12 +131,96 @@ def health():
 
 @app.get("/browse-folders")
 def browse_folders(path: str = ""):
-    base = Path("./").resolve()
-    target = (base / path).resolve()
+    if not path:
+        # Use the root drive as the base folder
+        current_drive = os.path.splitdrive(os.getcwd())[0]
+        if current_drive:  # On Windows, this will be something like "C:"
+            target = Path(current_drive + "\\")
+        else:  # On non-Windows systems, fallback to root
+            target = Path("/")
+    else:
+        # If a path is provided, use it directly
+        try:
+            target_path = Path(path)
+            # Check if it's an absolute path
+            if target_path.is_absolute():
+                target = target_path
+            else:
+                # For relative paths, use the current directory as base
+                target = Path("./").resolve() / path
+            target = target.resolve()
+        except Exception:
+            raise HTTPException(400, "Invalid path format")
+
     if not target.exists() or not target.is_dir():
         raise HTTPException(400, "Invalid path")
-    subdirs = [f.name for f in target.iterdir() if f.is_dir()]
-    return {"current": str(target), "subfolders": subdirs, "separator": os.sep}
+
+    # Get parent path for breadcrumb navigation
+    # For root drives (like C:\), there's no parent to navigate to
+    is_root_drive = target == Path(os.path.splitdrive(str(target))[0] + "\\") if os.name == 'nt' else target == Path("/")
+    parent_path = str(target.parent) if not is_root_drive else None
+
+    # Get path parts for breadcrumb navigation
+    path_parts = []
+    current = target
+    # Continue until we reach the root of the file system
+    while True:
+        # Add the current path part
+        path_parts.insert(0, {"name": current.name or current.drive, "path": str(current)})
+
+        # Stop if we've reached the root
+        if current == current.parent or current == Path("/") or (os.name == 'nt' and current == Path(current.drive + "\\")):
+            break
+
+        # Move up to the parent
+        current = current.parent
+
+    # Get subdirectories with additional metadata
+    subdirs = []
+    for f in target.iterdir():
+        if f.is_dir():
+            # Check if directory contains project files (like .git, pyproject.toml, etc.)
+            is_project = any(
+                (f / marker).exists()
+                for marker in [".git", "pyproject.toml", "package.json", "requirements.txt"]
+            )
+
+            # Get last modified time
+            try:
+                modified = f.stat().st_mtime
+            except:
+                modified = 0
+
+            subdirs.append({
+                "name": f.name,
+                "path": str(f),
+                "is_project": is_project,
+                "modified": modified
+            })
+
+    # Sort directories: projects first, then alphabetically
+    subdirs.sort(key=lambda x: (not x["is_project"], x["name"].lower()))
+
+    # Get recent projects from settings if available
+    recent_projects = []
+    try:
+        settings_path = Path("settings.json")
+        if settings_path.exists():
+            import json
+            with open(settings_path, "r") as f:
+                settings_data = json.load(f)
+                recent_projects = settings_data.get("recent_projects", [])
+    except:
+        pass
+
+    return {
+        "current": str(target),
+        "parent": parent_path,
+        "path_parts": path_parts,
+        "subfolders": subdirs,
+        "separator": os.sep,
+        "recent_projects": recent_projects
+    }
 
 if __name__ == "__main__":
     import uvicorn
