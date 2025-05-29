@@ -1,7 +1,9 @@
 import subprocess
 
 from engine.engine_config import load_settings, switch_backend
-from engine.agent_core import (handle_input, vectorstore_manager)
+from engine.agent_core import handle_input
+from engine.di import container
+from engine.interfaces import VectorStoreManagerInterface
 from engine.tool_store import load_tools, match_and_run_tools
 from engine.voice import transcribe_audio, speak_text
 from engine.memory_store import add_memory_fact, recall_memory, forget_memory
@@ -67,6 +69,7 @@ def run_agent():
             elif command.startswith("!mode "):
                 profile["mode"] = command.split(" ", 1)[1].strip()
                 print(f"🔧 Mode set to: {profile['mode']}")
+                vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
                 if profile["mode"] != vectorstore_manager.current_vector_mode:
                     vectorstore_manager.get_vectorstore(profile)
                 continue
@@ -75,6 +78,7 @@ def run_agent():
                 profile["mode"] = "development"
                 print(f"📂 Project set to: {profile['project_path']}")
                 # Load the development vectorstore
+                vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
                 vectorstore_manager.get_vectorstore(profile)
                 continue
             elif command == "!reindex":
@@ -82,7 +86,8 @@ def run_agent():
                 if path:
                     subprocess.run(["python", "ingest_project.py", path])
                     # Reset the vectorstore to force reloading
-                    vectorstore_manager.vectorstore = None
+                    vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
+                    vectorstore_manager.reset_vectorstore()
                     vectorstore_manager.get_vectorstore(profile)
                     print("✅ Vectorstore reloaded.")
                 else:

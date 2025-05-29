@@ -4,35 +4,35 @@ Shared utilities for the Suhana AI Assistant.
 This module contains shared utilities used across the Suhana codebase.
 """
 
-import logging
 import json
+import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union
 
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
+from engine.logging_config import get_logger
 
-# Configure a logger for this module
-logger = logging.getLogger(__name__)
+# Get a logger for this module
+logger = get_logger(__name__)
 
-def configure_logging(name: Optional[str] = None, level: int = logging.INFO) -> logging.Logger:
+def configure_logging(name: Optional[str] = None, level: Optional[int] = None) -> logging.Logger:
     """
-    Configure logging with a consistent format.
+    Get a logger with the given name.
+
+    This function is maintained for backward compatibility.
+    New code should use engine.logging_config.get_logger directly.
 
     Args:
         name: The name of the logger (defaults to __name__ if None)
-        level: The logging level (defaults to INFO)
+        level: The logging level (ignored, use settings.json to configure levels)
 
     Returns:
         A configured logger instance
     """
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    return logging.getLogger(name or __name__)
+    from engine.logging_config import get_logger
+    return get_logger(name or __name__)
 
 def get_embedding_model(model_name: str = "all-MiniLM-L6-v2") -> HuggingFaceEmbeddings:
     """

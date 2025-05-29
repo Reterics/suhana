@@ -2,20 +2,65 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 import os
-import json
+from typing import Dict, Any, Optional
+
+from engine.logging_config import configure_logging, get_log_config, set_log_level
 
 load_dotenv()
 
 SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
+DEFAULT_LOG_DIR = Path(__file__).parent.parent / "logs"
 
-def load_settings():
+def load_settings() -> Dict[str, Any]:
+    """
+    Load settings from the settings.json file and configure the application.
+
+    Returns:
+        Dictionary containing the application settings
+    """
     with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
         settings = json.load(f)
 
     # Fallback to env if not in settings
     if not settings.get("openai_api_key"):
         settings["openai_api_key"] = os.getenv("OPENAI_API_KEY")
+
+    # Configure logging based on settings
+    configure_logging_from_settings(settings)
+
     return settings
+
+def configure_logging_from_settings(settings: Dict[str, Any]) -> None:
+    """
+    Configure the logging system based on the application settings.
+
+    Args:
+        settings: Dictionary containing the application settings
+    """
+    # Get logging settings with defaults
+    logging_config = settings.get("logging", {})
+
+    # Set up log directory
+    log_dir = logging_config.get("log_dir")
+    if log_dir:
+        log_dir = Path(log_dir)
+    else:
+        log_dir = DEFAULT_LOG_DIR
+
+    # Configure logging
+    configure_logging(
+        config={
+            "console_level": logging_config.get("console_level", "INFO"),
+            "file_level": logging_config.get("file_level", "DEBUG"),
+            "log_file": logging_config.get("log_file", "suhana.log"),
+            "log_format": logging_config.get("log_format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"),
+            "date_format": logging_config.get("date_format", "%Y-%m-%d %H:%M:%S"),
+            "max_file_size": logging_config.get("max_file_size", 10 * 1024 * 1024),  # 10 MB
+            "backup_count": logging_config.get("backup_count", 5),
+            "propagate": logging_config.get("propagate", False)
+        },
+        log_dir=log_dir
+    )
 
 def save_settings(settings):
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:

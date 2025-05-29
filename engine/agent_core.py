@@ -1,41 +1,64 @@
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union, Generator
 
+from engine.interfaces import VectorStoreInterface, VectorStoreManagerInterface, MemoryStoreInterface, LLMBackendInterface
 from engine.profile import summarize_profile_for_prompt
-from engine.backends.ollama import query_ollama
-from engine.backends.openai import query_openai
 from langchain_community.vectorstores import FAISS
-from engine.memory_store import search_memory
-from engine.utils import configure_logging, get_embedding_model, load_vectorstore
+from engine.utils import get_embedding_model, load_vectorstore
+from engine.di import container
+from engine.error_handling import (
+    error_boundary,
+    VectorStoreError,
+    BackendError,
+)
+from engine.logging_config import get_logger
 
-# Configure logging
-logger = configure_logging(__name__)
+# Get a logger for this module
+logger = get_logger(__name__)
 
 # Constants
 VECTORSTORE_PATH = Path(__file__).parent.parent / "vectorstore"
 
-# Singleton class for managing vectorstore state
-class VectorStoreManager:
-    _instance = None
+# Implementation of VectorStoreManager that implements the interface
+class VectorStoreManager(VectorStoreManagerInterface):
+    """
+    Implementation of VectorStoreManagerInterface that manages vectorstore state.
+    """
 
     def __init__(self):
-        self.current_vector_mode = None
-        self.vectorstore = None
+        self._current_vector_mode = None
+        self._vectorstore = None
+        self._embedding_model = get_embedding_model()
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(VectorStoreManager, cls).__new__(cls)
-            cls._instance._initialize()
-        return cls._instance
+    @property
+    def current_vector_mode(self) -> Optional[str]:
+        """Get the current vector mode."""
+        return self._current_vector_mode
 
-    def _initialize(self):
-        """Initialize the vectorstore manager."""
-        self.embedding_model = get_embedding_model()
-        self.current_vector_mode = None
-        self.vectorstore = None
+    @current_vector_mode.setter
+    def current_vector_mode(self, value: str) -> None:
+        """Set the current vector mode."""
+        self._current_vector_mode = value
 
-    def get_vectorstore(self, profile: Optional[Dict[str, Any]] = None) -> Optional[FAISS]:
+    @property
+    def vectorstore(self) -> Optional[VectorStoreInterface]:
+        """Get the current vectorstore."""
+        return self._vectorstore
+
+    @property
+    def embedding_model(self):
+        """Get the embedding model."""
+        return self._embedding_model
+
+    def reset_vectorstore(self) -> None:
+        """
+        Reset the vectorstore, forcing it to be reloaded on the next get_vectorstore call.
+        """
+        self._vectorstore = None
+
+    @error_boundary(fallback_value=None, error_type=VectorStoreError)
+    def get_vectorstore(self, profile: Optional[Dict[str, Any]] = None) -> Optional[VectorStoreInterface]:
         """
         Get the appropriate vectorstore based on the profile and mode.
 
@@ -43,7 +66,10 @@ class VectorStoreManager:
             profile: User profile containing mode and project path
 
         Returns:
-            FAISS vectorstore or None if not available
+            Vectorstore or None if not available
+
+        Raises:
+            VectorStoreError: If there's an issue with the vectorstore
         """
         mode = "normal"
         path = None
@@ -57,11 +83,11 @@ class VectorStoreManager:
             mode = "normal"
 
         # If mode hasn't changed, return the existing vectorstore
-        if mode == self.current_vector_mode and self.vectorstore is not None:
-            return self.vectorstore
+        if mode == self._current_vector_mode and self._vectorstore is not None:
+            return self._vectorstore
 
         # Update the current mode
-        self.current_vector_mode = mode
+        self._current_vector_mode = mode
 
         # Determine the path to the vectorstore
         if mode == "development" and profile.get("project_path"):
@@ -79,16 +105,104 @@ class VectorStoreManager:
                 try:
                     subprocess.run(["python", "ingest.py"], check=True)
                 except subprocess.CalledProcessError as e:
-                    logger.error(f"❌ Failed to run ingest.py: {e}")
-                    return None
+                    raise VectorStoreError(
+                        f"Failed to run ingest.py: {e}",
+                        details={"path": str(path)},
+                        cause=e
+                    )
 
         # Load the vectorstore
-        self.vectorstore = load_vectorstore(path, self.embedding_model)
-        return self.vectorstore
+        try:
+            self._vectorstore = load_vectorstore(path, self._embedding_model)
+            return self._vectorstore
+        except Exception as e:
+            raise VectorStoreError(
+                f"Failed to load vectorstore from {path}",
+                details={"path": str(path)},
+                cause=e
+            )
 
-# Initialize the vectorstore manager
-vectorstore_manager = VectorStoreManager()
-vectorstore_manager.get_vectorstore()
+# Adapter for FAISS vectorstore to implement VectorStoreInterface
+class FAISVectorStoreAdapter(VectorStoreInterface):
+    """
+    Adapter for FAISS vectorstore to implement VectorStoreInterface.
+    """
+
+    def __init__(self, faiss_vectorstore: FAISS):
+        self._vectorstore = faiss_vectorstore
+
+    def similarity_search_with_score(self, query: str, k: int = 4) -> List[tuple]:
+        """
+        Search for similar documents with scores.
+
+        Args:
+            query: The query string
+            k: Number of results to return
+
+        Returns:
+            List of (document, score) tuples
+        """
+        return self._vectorstore.similarity_search_with_score(query, k)
+
+# Adapter for memory store to implement MemoryStoreInterface
+class MemoryStoreAdapter(MemoryStoreInterface):
+    """
+    Adapter for memory store to implement MemoryStoreInterface.
+    """
+
+    def __init__(self, search_memory_func):
+        self._search_memory = search_memory_func
+
+    def search_memory(self, query: str, k: int = 10) -> List[Any]:
+        """
+        Search for relevant memories.
+
+        Args:
+            query: The query string
+            k: Number of results to return
+
+        Returns:
+            List of memory items
+        """
+        return self._search_memory(query, k)
+
+# Adapter for LLM backends to implement LLMBackendInterface
+class LLMBackendAdapter(LLMBackendInterface):
+    """
+    Adapter for LLM backends to implement LLMBackendInterface.
+    """
+
+    def __init__(self, query_func):
+        self._query = query_func
+
+    def query(
+        self,
+        user_input: str,
+        system_prompt: str,
+        profile: Dict[str, Any],
+        settings: Dict[str, Any],
+        force_stream: bool = False
+    ) -> Union[str, Generator[str, None, None]]:
+        """
+        Query the LLM backend.
+
+        Args:
+            user_input: The user's query
+            system_prompt: The system prompt
+            profile: User profile information
+            settings: Application settings
+            force_stream: Whether to force streaming mode
+
+        Returns:
+            The generated response or a generator for streaming responses
+        """
+        return self._query(user_input, system_prompt, profile, settings, force_stream)
+
+# Register services with the container
+container.register("vectorstore_manager", VectorStoreManager())
+
+# Initialize the vectorstore
+container.get_typed("vectorstore_manager", VectorStoreManagerInterface).get_vectorstore()
 
 def should_include_documents(user_input: str, mems: List[Any]) -> bool:
     """
@@ -118,6 +232,27 @@ def should_include_documents(user_input: str, mems: List[Any]) -> bool:
     return False
 
 
+# Register backend factories with the container
+def register_backends():
+    """Register LLM backend factories with the container."""
+    from engine.backends.ollama import query_ollama
+    from engine.backends.openai import query_openai
+    from engine.memory_store import search_memory
+
+    # Register memory store
+    memory_store = MemoryStoreAdapter(search_memory)
+    container.register("memory_store", memory_store)
+
+    # Register LLM backends
+    container.register("ollama_backend", LLMBackendAdapter(query_ollama))
+    container.register("openai_backend", LLMBackendAdapter(query_openai))
+
+
+# Register backends
+register_backends()
+
+
+@error_boundary(fallback_value="I'm sorry, I encountered an error processing your request.", error_type=BackendError)
 def handle_input(
     user_input: str,
     backend: str,
@@ -137,10 +272,25 @@ def handle_input(
 
     Returns:
         The generated response
+
+    Raises:
+        BackendError: If there's an issue with the LLM backend
+        VectorStoreError: If there's an issue with the vectorstore
     """
+    # Get dependencies from the container
+    memory_store = container.get_typed("memory_store", MemoryStoreInterface)
+    vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
+
     # Get relevant memories
-    mems = search_memory(user_input, k=10)
-    include_docs = should_include_documents(user_input, mems)
+    try:
+        mems = memory_store.search_memory(user_input, k=10)
+        include_docs = should_include_documents(user_input, mems)
+    except Exception as e:
+        raise BackendError(
+            "Failed to retrieve relevant memories",
+            details={"query": user_input},
+            cause=e
+        )
 
     # Build context from memories and documents
     context_parts = []
@@ -159,28 +309,36 @@ def handle_input(
                 if docs:
                     context_parts.append("DOCUMENTS:\n" + "\n".join(f"- {d.page_content}" for d in docs))
             except Exception as e:
-                logger.error(f"❌ Error during document search: {e}")
+                # Log but don't fail the entire request if document search fails
+                logger.warning(f"Error during document search: {e}")
+                # Add a note about the failure to the context
+                context_parts.append("NOTE: Document search failed, results may be limited.")
         else:
-            logger.warning("❌ Vectorstore not available for document search")
+            logger.warning("Vectorstore not available for document search")
 
     # Combine context and create system prompt
     context = "\n".join(context_parts)
     system_prompt = f"{summarize_profile_for_prompt(profile)}\n\nContext:\n{context}"
 
     if not context_parts:
-        logger.warning("⚠️ No relevant memory or documents found.")
+        logger.warning("No relevant memory or documents found.")
 
     # Generate response using the appropriate backend
-    try:
-        if backend == "ollama":
-            reply = query_ollama(user_input, system_prompt, profile, settings, force_stream=force_stream)
-        elif backend == "openai":
-            reply = query_openai(user_input, system_prompt, profile, settings, force_stream=force_stream)
-        else:
-            logger.error(f"❌ Unknown backend: {backend}")
-            reply = "❌ Unknown backend"
-    except Exception as e:
-        logger.error(f"❌ Error generating response: {e}")
-        reply = f"❌ Error: {str(e)}"
+    backend_name = f"{backend}_backend"
+    if container.get_or_default(backend_name) is not None:
+        llm_backend = container.get_typed(backend_name, LLMBackendInterface)
+        try:
+            reply = llm_backend.query(user_input, system_prompt, profile, settings, force_stream=force_stream)
+        except Exception as e:
+            raise BackendError(
+                f"Error generating response with {backend} backend",
+                details={"backend": backend, "query": user_input},
+                cause=e
+            )
+    else:
+        raise BackendError(
+            f"Unknown backend: {backend}",
+            details={"available_backends": [name.replace("_backend", "") for name in container._services.keys() if name.endswith("_backend")]}
+        )
 
     return reply

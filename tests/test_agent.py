@@ -281,7 +281,8 @@ def test_run_agent_load_command_valid(mock_list_meta, mock_input, mock_load_tool
 @patch("engine.agent.input")
 @patch("engine.agent.subprocess.run")
 @patch("engine.agent.vectorstore_manager")
-def test_run_agent_reindex_command(mock_vectorstore_manager, mock_subprocess, mock_input,
+@patch("engine.agent.container.get_typed")
+def test_run_agent_reindex_command(mock_get_typed, mock_vectorstore_manager, mock_subprocess, mock_input,
                                   mock_load_tools, mock_load_conversation,
                                   mock_create_conversation, mock_load_settings):
     """Test that the run_agent function handles !reindex commands correctly."""
@@ -291,6 +292,12 @@ def test_run_agent_reindex_command(mock_vectorstore_manager, mock_subprocess, mo
     mock_profile = {"history": [], "preferences": {}, "project_path": "test/path"}
     mock_load_conversation.return_value = mock_profile
     mock_load_tools.return_value = []
+
+    # Configure the vectorstore_manager mock
+    type(mock_vectorstore_manager).vectorstore = None
+
+    # Configure container.get_typed to return our mock
+    mock_get_typed.return_value = mock_vectorstore_manager
 
     # Set up input to first provide a reindex command, then exit
     mock_input.side_effect = ["!reindex", "exit"]

@@ -11,4 +11,9 @@ __pycache__/
 /memory/
 /conversations/
 api_keys.json
+tests/speech.wav
 speech.wav
+# Log files
+*.log
+/logs/
+*.log.*

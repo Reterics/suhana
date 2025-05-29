@@ -145,6 +145,8 @@ suhana/
 ├─ vectorstore/           # Auto-generated FAISS index
 ├─ models/                # Prompt templates
 ├─ assets/                # Logos and visuals
+├─ docs/                  # Documentation
+│  └─ architecture.md     # Component relationships diagram
 ├─ ingest.py              # Knowledge indexer
 ├─ main.py                # Entrypoint and setup runner
 ├─ settings.template.json # Safe config defaults

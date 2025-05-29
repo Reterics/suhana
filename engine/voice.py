@@ -3,6 +3,29 @@ import tempfile
 import subprocess
 import sounddevice as sd
 import numpy as np
+
+# Ensure numpy._core.multiarray is properly initialized before importing TTS
+# This prevents the "AttributeError: module 'numpy._core' has no attribute 'multiarray'" error
+try:
+    import numpy._core.multiarray
+except (ImportError, AttributeError):
+    # If multiarray is not available, create a minimal implementation
+    # This is a workaround for compatibility with PyTorch 2.4+ and TTS
+    if not hasattr(np._core, 'multiarray'):
+        class DummyMultiarray:
+            class scalar:
+                pass
+        np._core.multiarray = DummyMultiarray()
+
+# Make sure the multiarray attribute is accessible to other modules
+# This ensures that when TTS imports numpy, it can find the multiarray attribute
+if hasattr(np._core, 'multiarray') and not hasattr(np, '_MULTIARRAY_PATCHED'):
+    # Mark that we've patched numpy to avoid doing it multiple times
+    np._MULTIARRAY_PATCHED = True
+    # Ensure the multiarray module is properly exposed in numpy's namespace
+    if not hasattr(np, 'multiarray'):
+        np.multiarray = np._core.multiarray
+
 import whisper
 from TTS.api import TTS
 import soundfile as sf
@@ -63,11 +86,37 @@ def record_audio_until_silence(threshold = 100, silence_duration=2.0, max_durati
                 print("🛑 Silence detected. Stopping.")
                 raise sd.CallbackStop()
 
+    # Create the InputStream
+    stream = sd.InputStream(callback=callback, samplerate=samplerate, channels=1, dtype=np.int16, blocksize=frame_samples)
+
+    # Check if stream is None (which would cause the TypeError)
+    if stream is None:
+        print("⚠️ Failed to create audio input stream. Check your audio device configuration.")
+        return np.zeros((1,), dtype=np.int16)
+
     try:
-        with sd.InputStream(callback=callback, samplerate=samplerate, channels=1, dtype=np.int16, blocksize=frame_samples):
+        # Try to use the stream as a context manager
+        with stream:
             sd.sleep(int(max_duration * 1000))
     except sd.CallbackStop:
         pass  # expected exit
+    except TypeError as e:
+        if "context manager protocol" in str(e):
+            print("⚠️ Audio input stream doesn't support context manager. Using manual start/stop instead.")
+            try:
+                # Alternative approach without context manager
+                stream.start()
+                sd.sleep(int(max_duration * 1000))
+                stream.stop()
+                stream.close()
+            except sd.CallbackStop:
+                pass  # expected exit
+            except Exception as e:
+                print(f"❌ Error recording audio: {e}")
+                return np.zeros((1,), dtype=np.int16)
+        else:
+            # Re-raise other TypeError exceptions
+            raise
 
     if not audio_buffer:
         print("⚠️ No speech detected.")
@@ -94,9 +143,47 @@ def transcribe_audio():
 def speak_text(text):
     global _tts
     if _tts is None:
+        print("🔊 Initializing text-to-speech engine...")
         _tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
-    wav = _tts.tts(text)
-    sf.write("speech.wav", wav, 22050)
-    subprocess.run(["ffplay", "-nodisp", "-autoexit", "speech.wav"], stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL)
-    os.remove("speech.wav")
+    print("🔊 Generating speech...")
+    try:
+        wav = _tts.tts(text)
+    except AttributeError as e:
+        if "multiarray" in str(e):
+            print(f"⚠️ NumPy multiarray error: {e}")
+            print("🔄 Attempting to fix NumPy multiarray issue and retry...")
+            # Ensure multiarray is available in numpy's namespace
+            if hasattr(np._core, 'multiarray'):
+                np.multiarray = np._core.multiarray
+            # Try again
+            wav = _tts.tts(text)
+        else:
+            raise
+
+    # Handle case where tts() returns a generator
+    if hasattr(wav, '__iter__') and not isinstance(wav, (bytes, str, list, np.ndarray)):
+        print("🔄 Converting generator to list...")
+        try:
+            wav = list(wav)  # Convert generator to list
+        except Exception as e:
+            print(f"⚠️ Error converting generator to list: {e}")
+            # Try to consume the generator in a different way
+            wav = [item for item in wav]
+
+    # Ensure wav is a proper format for sf.write
+    if isinstance(wav, (list, tuple)) and len(wav) > 0 and isinstance(wav[0], (list, tuple, np.ndarray)):
+        print("🔄 Flattening nested list/array...")
+        wav = np.concatenate([np.array(item) for item in wav])
+
+    print("🔊 Writing audio to file...")
+    # Use absolute path for the speech file
+    speech_file = os.path.abspath("speech.wav")
+    sf.write(speech_file, wav, 22050)
+
+    try:
+        print("🔊 Playing audio...")
+        subprocess.run(["ffplay", "-nodisp", "-autoexit", speech_file], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, shell=True)
+    finally:
+        # Ensure we always remove the file, even if playing fails
+        os.remove(speech_file)
