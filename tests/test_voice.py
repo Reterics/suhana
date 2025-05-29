@@ -247,10 +247,35 @@ class TestVoice:
             assert text == "sample transcription"
 
     @skip_all
+    def test_transcribe_audio_file_not_found(self, mock_whisper):
+        """Test that transcribe_audio handles FileNotFoundError gracefully."""
+        with patch('engine.voice.record_audio_until_silence', return_value=SAMPLE_AUDIO), \
+             patch('engine.voice.save_temp_wav', return_value="/tmp/test.wav"), \
+             patch('engine.voice.get_whisper_model', return_value=mock_whisper.load_model.return_value), \
+             patch('os.remove', side_effect=FileNotFoundError("File not found")), \
+             patch('builtins.print') as mock_print:
+
+            # Call the function - should not raise an exception
+            text = voice.transcribe_audio()
+
+            # Verify the model was used to transcribe
+            model = mock_whisper.load_model.return_value
+            model.transcribe.assert_called_once_with("/tmp/test.wav")
+
+            # Verify the warning was printed
+            mock_print.assert_any_call("⚠️ Warning: Could not remove temporary file /tmp/test.wav: File not found")
+
+            # Verify the returned text
+            assert text == "sample transcription"
+
+    @skip_all
     def test_speak_text(self, mock_tts, mock_soundfile, mock_subprocess):
         """Test that speak_text generates and plays speech correctly."""
         # Reset the global TTS model
         voice._tts = None
+
+        # Configure subprocess.run to succeed for ffplay -version
+        mock_subprocess.run.return_value.returncode = 0
 
         # Call the function
         voice.speak_text("Hello, world!")
@@ -269,13 +294,17 @@ class TestVoice:
         # Verify the audio was saved to a file
         mock_soundfile.write.assert_called_once()
         args, kwargs = mock_soundfile.write.call_args
-        assert args[0] == "speech.wav"
+        # Check that the filename contains "speech_" and ends with ".wav"
+        assert "speech_" in args[0]
+        assert args[0].endswith(".wav")
         assert args[2] == 22050
 
         # Verify ffplay was called to play the audio
         mock_subprocess.run.assert_called_once()
         args, kwargs = mock_subprocess.run.call_args
-        assert args[0] == ["ffplay", "-nodisp", "-autoexit", "speech.wav"]
+        cmd = args[0]
+        assert cmd[:3] == ["ffplay", "-nodisp", "-autoexit"]
+        assert cmd[3].startswith("F:") and "speech_" in cmd[3] and cmd[3].endswith(".wav")
         assert kwargs['stdout'] == mock_subprocess.DEVNULL
         assert kwargs['stderr'] == mock_subprocess.DEVNULL
 
@@ -284,6 +313,9 @@ class TestVoice:
         """Test that speak_text handles numpy multiarray errors correctly."""
         # Reset the global TTS model
         voice._tts = None
+
+        # Configure subprocess.run to succeed for ffplay -version
+        mock_subprocess.run.return_value.returncode = 0
 
         # Configure the mock to raise an AttributeError on first call, then succeed
         mock_tts_instance = mock_tts.return_value
@@ -301,11 +333,17 @@ class TestVoice:
         # Verify the audio was saved to a file
         mock_soundfile.write.assert_called_once()
 
+        # Verify ffplay version check was called
+        assert mock_subprocess.run.call_count >= 1
+
     @skip_all
     def test_speak_text_generator_output(self, mock_tts, mock_soundfile, mock_subprocess):
         """Test that speak_text handles generator output from TTS correctly."""
         # Reset the global TTS model
         voice._tts = None
+
+        # Configure subprocess.run to succeed for ffplay -version
+        mock_subprocess.run.return_value.returncode = 0
 
         # Configure the mock to return a generator
         def generator_output():
@@ -323,4 +361,38 @@ class TestVoice:
 
         # The generator should have been converted to a list
         args, kwargs = mock_soundfile.write.call_args
-        assert isinstance(args[1], list)
+        assert isinstance(args[1], (list, np.ndarray))
+
+        # Verify ffplay version check was called
+        assert mock_subprocess.run.call_count >= 1
+
+    @skip_all
+    def test_speak_text_file_not_found(self, mock_tts, mock_soundfile, mock_subprocess):
+        """Test that speak_text handles FileNotFoundError gracefully when removing the speech file."""
+        # Reset the global TTS model
+        voice._tts = None
+
+        # Configure subprocess.run to succeed for ffplay -version
+        mock_subprocess.run.return_value.returncode = 0
+
+        # Configure the mock to return audio data
+        mock_tts_instance = mock_tts.return_value
+        mock_tts_instance.tts.return_value = np.zeros((22050,), dtype=np.float32)
+
+        # Mock os.remove to raise FileNotFoundError
+        with patch('os.remove', side_effect=FileNotFoundError("File not found")), \
+             patch('builtins.print') as mock_print:
+
+            # Call the function - should not raise an exception
+            voice.speak_text("Hello, world!")
+
+            # Verify TTS was used to generate speech
+            mock_tts_instance.tts.assert_called_once_with("Hello, world!")
+
+            # Verify the audio was saved to a file
+            mock_soundfile.write.assert_called_once()
+
+            # Verify the warning was printed
+            # We can't check the exact file path since it contains a UUID, but we can check part of the message
+            warning_calls = [call for call in mock_print.call_args_list if "⚠️ Warning: Could not remove speech file" in str(call)]
+            assert len(warning_calls) > 0

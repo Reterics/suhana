@@ -280,9 +280,8 @@ def test_run_agent_load_command_valid(mock_list_meta, mock_input, mock_load_tool
 @patch("engine.agent.load_tools")
 @patch("engine.agent.input")
 @patch("engine.agent.subprocess.run")
-@patch("engine.agent.vectorstore_manager")
 @patch("engine.agent.container.get_typed")
-def test_run_agent_reindex_command(mock_get_typed, mock_vectorstore_manager, mock_subprocess, mock_input,
+def test_run_agent_reindex_command(mock_get_typed, mock_subprocess, mock_input,
                                   mock_load_tools, mock_load_conversation,
                                   mock_create_conversation, mock_load_settings):
     """Test that the run_agent function handles !reindex commands correctly."""
@@ -293,8 +292,11 @@ def test_run_agent_reindex_command(mock_get_typed, mock_vectorstore_manager, moc
     mock_load_conversation.return_value = mock_profile
     mock_load_tools.return_value = []
 
-    # Configure the vectorstore_manager mock
-    type(mock_vectorstore_manager).vectorstore = None
+    # Create a mock for the vectorstore_manager
+    mock_vectorstore_manager = MagicMock()
+    mock_vectorstore_manager.vectorstore = None
+    mock_vectorstore_manager.reset_vectorstore = MagicMock()
+    mock_vectorstore_manager.get_vectorstore = MagicMock()
 
     # Configure container.get_typed to return our mock
     mock_get_typed.return_value = mock_vectorstore_manager
@@ -308,7 +310,7 @@ def test_run_agent_reindex_command(mock_get_typed, mock_vectorstore_manager, moc
     # Verify the function called the expected dependencies
     assert mock_input.call_count == 2
     mock_subprocess.assert_called_once_with(["python", "ingest_project.py", "test/path"])
-    assert mock_vectorstore_manager.vectorstore is None
+    mock_vectorstore_manager.reset_vectorstore.assert_called_once()
     mock_vectorstore_manager.get_vectorstore.assert_called_with(mock_profile)
 
 

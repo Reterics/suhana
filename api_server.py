@@ -11,14 +11,17 @@ from pydantic import BaseModel
 
 from engine.agent_core import handle_input
 from engine.api_key_store import load_valid_api_keys
+from engine.di import container
 from engine.engine_config import load_settings
 from engine.conversation_store import (
     create_new_conversation,
-    list_conversations,
     load_conversation,
     save_conversation, list_conversation_meta
 )
-from engine.agent_core import vectorstore_manager
+from engine.interfaces import VectorStoreManagerInterface
+
+# Export the vectorstore_manager instance for direct imports
+vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
 
 app = FastAPI()
 app.add_middleware(

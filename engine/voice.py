@@ -1,4 +1,5 @@
 import os
+import uuid
 import tempfile
 import subprocess
 import sounddevice as sd
@@ -137,7 +138,10 @@ def transcribe_audio():
     wav_path = save_temp_wav(audio)
     model = get_whisper_model()
     result = model.transcribe(wav_path)
-    os.remove(wav_path)
+    try:
+        os.remove(wav_path)
+    except FileNotFoundError as e:
+        print(f"⚠️ Warning: Could not remove temporary file {wav_path}: {e}")
     return result["text"]
 
 def speak_text(text):
@@ -175,9 +179,9 @@ def speak_text(text):
         print("🔄 Flattening nested list/array...")
         wav = np.concatenate([np.array(item) for item in wav])
 
-    print("🔊 Writing audio to file...")
     # Use absolute path for the speech file
-    speech_file = os.path.abspath("speech.wav")
+    speech_file = os.path.abspath(f"speech_{uuid.uuid4().hex}.wav")
+    print("🔊 Writing audio to file: ", speech_file)
     sf.write(speech_file, wav, 22050)
 
     try:
@@ -185,5 +189,7 @@ def speak_text(text):
         subprocess.run(["ffplay", "-nodisp", "-autoexit", speech_file], stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, shell=True)
     finally:
-        # Ensure we always remove the file, even if playing fails
-        os.remove(speech_file)
+        try:
+            os.remove(speech_file)
+        except FileNotFoundError as e:
+            print(f"⚠️ Warning: Could not remove speech file {speech_file}: {e}")
