@@ -1,6 +1,6 @@
 import pytest
 from typing import Protocol, runtime_checkable
-from unittest.mock import MagicMock
+
 
 from engine.di import DIContainer
 

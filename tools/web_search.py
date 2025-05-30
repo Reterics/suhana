@@ -3,8 +3,8 @@ from urllib.parse import quote_plus
 from engine.net import get
 
 name = "web_search"
-description = "Searches the web using DuckDuckGo and returns top snippets."
-pattern = r"(?:search|google|look up|find|can you search(?: for me)?)(?: about| for)?\s+(?P<query>[A-Za-z0-9 '\-]+)[\?\. ]*$"
+description = "Searches the web using DuckDuckGo, Bing, or Brave and returns top snippets."
+pattern = r"(?:search|google|look up|find|can you search(?: for me)?)(?: with (?P<engine>duckduckgo|bing|brave))?(?: about| for)?\s+(?P<query>[A-Za-z0-9 '\-]+)[\?\. ]*$"
 
 headers = {
     "User-Agent": "Mozilla/5.0 (compatible; Suhana/1.0; +https://github.com/reterics/suhana)"
@@ -45,10 +45,11 @@ def action(user_input: str, query: str, engine: str = "duckduckgo") -> str:
         snippets = provider(query)
 
         if not snippets:
-            return "I searched, but couldn’t find anything useful."
+            return "I searched, but couldn't find anything useful"
 
         summary = "\n".join(f"- {s}" for s in snippets[:3])
-        return f"Here’s what I found about '{query}':\n{summary}"
+        message = f"Here's what I found about '{query}'"
+        return message + f":\n{summary}"
 
     except Exception as e:
         return f"Web search failed: {e}"

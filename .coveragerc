@@ -1,0 +1,19 @@
+[run]
+source = engine, tools, api_server.py, ingest.py, ingest_project.py, main.py
+omit =
+    */tests/*
+    */__pycache__/*
+    */venv/*
+    */tauri-ui/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    raise ImportError
+
+[html]
+directory = coverage_html_report

@@ -1,9 +1,8 @@
 import os
 import pytest
 import numpy as np
-import tempfile
-from unittest.mock import patch, MagicMock, mock_open
-from pathlib import Path
+from unittest.mock import patch, MagicMock
+
 
 from engine import voice
 
@@ -304,7 +303,7 @@ class TestVoice:
         args, kwargs = mock_subprocess.run.call_args
         cmd = args[0]
         assert cmd[:3] == ["ffplay", "-nodisp", "-autoexit"]
-        assert cmd[3].startswith("F:") and "speech_" in cmd[3] and cmd[3].endswith(".wav")
+        assert os.path.isabs(cmd[3]) and "speech_" in cmd[3] and cmd[3].endswith(".wav")
         assert kwargs['stdout'] == mock_subprocess.DEVNULL
         assert kwargs['stderr'] == mock_subprocess.DEVNULL
 

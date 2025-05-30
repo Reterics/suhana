@@ -43,13 +43,35 @@ def test_suhana_error_with_details():
 
 def test_specific_error_types():
     """Test that specific error types inherit correctly."""
+    from engine.error_handling import (
+        ConfigurationError,
+        MemoryError,
+        ToolError,
+        NetworkError
+    )
+
     backend_error = BackendError("Backend failed")
     vector_error = VectorStoreError("Vector store issue")
+    config_error = ConfigurationError("Config issue")
+    memory_error = MemoryError("Memory issue")
+    tool_error = ToolError("Tool issue")
+    network_error = NetworkError("Network issue")
 
+    # Test that all error types inherit from SuhanaError
     assert isinstance(backend_error, SuhanaError)
     assert isinstance(vector_error, SuhanaError)
+    assert isinstance(config_error, SuhanaError)
+    assert isinstance(memory_error, SuhanaError)
+    assert isinstance(tool_error, SuhanaError)
+    assert isinstance(network_error, SuhanaError)
+
+    # Test that error messages are set correctly
     assert backend_error.message == "Backend failed"
     assert vector_error.message == "Vector store issue"
+    assert config_error.message == "Config issue"
+    assert memory_error.message == "Memory issue"
+    assert tool_error.message == "Tool issue"
+    assert network_error.message == "Network issue"
 
 @pytest.fixture
 def mock_logger():
@@ -57,8 +79,8 @@ def mock_logger():
     with patch("engine.error_handling.logger") as mock:
         yield mock
 
-def test_handle_error(mock_logger):
-    """Test that handle_error logs the error correctly."""
+def test_handle_error_suhana_error(mock_logger):
+    """Test that handle_error logs SuhanaError correctly."""
     error = SuhanaError("Test error", severity=ErrorSeverity.ERROR)
 
     handle_error(error)
@@ -67,6 +89,18 @@ def test_handle_error(mock_logger):
     mock_logger.log.assert_called_once()
     args, _ = mock_logger.log.call_args
     assert args[0] == 40  # ERROR level
+
+def test_handle_error_standard_exception(mock_logger):
+    """Test that handle_error logs standard exceptions correctly."""
+    error = ValueError("Standard error")
+
+    handle_error(error)
+
+    # Verify logger.error was called for standard exceptions
+    mock_logger.error.assert_called_once()
+    args, _ = mock_logger.error.call_args
+    assert "Unhandled exception" in args[0]
+    assert "Standard error" in args[0]
 
 def test_handle_error_with_handler():
     """Test that registered error handlers are called."""
@@ -77,6 +111,25 @@ def test_handle_error_with_handler():
     handle_error(error)
 
     handler.assert_called_once_with(error)
+
+def test_handle_error_with_multiple_handlers():
+    """Test that multiple handlers for the same exception type are all called."""
+    handler1 = MagicMock()
+    handler2 = MagicMock()
+    handler3 = MagicMock()
+
+    # Register multiple handlers for the same exception type
+    register_error_handler(ValueError, handler1)
+    register_error_handler(ValueError, handler2)
+    register_error_handler(ValueError, handler3)
+
+    error = ValueError("Test multiple handlers")
+    handle_error(error)
+
+    # Verify all handlers were called with the error
+    handler1.assert_called_once_with(error)
+    handler2.assert_called_once_with(error)
+    handler3.assert_called_once_with(error)
 
 def test_handle_error_with_failing_handler(mock_logger):
     """Test that handle_error handles exceptions in error handlers."""
@@ -140,6 +193,16 @@ def test_error_boundary_with_custom_message():
     # Should not raise and return None (default fallback)
     result = error_func()
     assert result is None
+
+def test_error_boundary_with_suhana_error():
+    """Test error_boundary when the function raises a SuhanaError directly."""
+    @error_boundary(fallback_value="fallback")
+    def error_func():
+        raise SuhanaError("Direct SuhanaError", severity=ErrorSeverity.WARNING)
+
+    # Should not raise and return the fallback value
+    result = error_func()
+    assert result == "fallback"
 
 def test_default_error_handler():
     """Test the default error handler."""

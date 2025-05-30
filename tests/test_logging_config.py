@@ -2,7 +2,7 @@ import pytest
 import logging
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from engine.logging_config import (
     configure_logging,

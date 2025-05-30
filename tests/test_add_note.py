@@ -1,9 +1,6 @@
-import tempfile
-import os
 from pathlib import Path
 import pytest
 from unittest.mock import patch, mock_open
-from datetime import datetime
 
 from tools.add_note import action
 

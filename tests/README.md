@@ -2,6 +2,53 @@
 
 This document provides information on how to run and write tests for the Suhana project, with a special focus on testing components that depend on hardware or external services.
 
+## Test Coverage
+
+The following modules have comprehensive test coverage:
+
+### 1. error_handling.py (16 tests)
+Tests for the error handling system in `engine/error_handling.py`.
+
+- **Basic Error Classes**
+  - Tests for SuhanaError and all specific error types (ConfigurationError, BackendError, MemoryError, VectorStoreError, ToolError, NetworkError)
+- **Error Handling**
+  - Tests for handling SuhanaError, standard exceptions, and error handlers
+- **Error Boundary**
+  - Tests for the error boundary decorator with various configurations
+- **Utilities**
+  - Tests for error formatting and default error handling
+
+### 2. memory_store.py (9 tests)
+Tests for the memory store system in `engine/memory_store.py`.
+
+- Tests for loading, saving, adding, searching, recalling, and forgetting memory
+
+### 3. engine_config.py (8 tests)
+Tests for the configuration system in `engine/engine_config.py`.
+
+- Tests for loading and saving settings, configuring logging, and switching backends
+
+### 4. utils.py (7 tests)
+Tests for utility functions in `engine/utils.py`.
+
+- Tests for logging configuration, embedding models, and vector store operations
+
+### Modules Needing Test Coverage
+
+The following modules now have test coverage:
+- conversation_store.py ✓
+- history.py ✓
+- interfaces.py ✓
+- net.py ✓
+- tool_store.py ✓
+
+However, the coverage for these modules is still relatively low and could be improved. Additionally, the following modules need better test coverage:
+- tools/*.py (most tool modules have low or no coverage)
+- api_server.py
+- ingest.py
+- ingest_project.py
+- main.py
+
 ## Running Tests
 
 To run all tests:
@@ -27,8 +74,63 @@ python -m pytest tests\test_voice.py::TestVoice::test_speak_text
 python -m pytest -v
 
 # Run with coverage report
-python -m pytest --cov=engine
+python -m pytest --cov --cov-config=.coveragerc
 ```
+
+## Code Coverage
+
+The project includes code coverage reporting in the GitHub Actions CI pipeline. The coverage report is generated using pytest-cov and uploaded to Codecov.
+
+### Coverage Configuration
+
+The `.coveragerc` file in the project root configures code coverage reporting:
+
+```ini
+[run]
+source = engine, tools, api_server.py, ingest.py, ingest_project.py, main.py
+omit =
+    */tests/*
+    */__pycache__/*
+    */venv/*
+    */tauri-ui/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    raise ImportError
+
+[html]
+directory = coverage_html_report
+```
+
+### Viewing Coverage Reports
+
+To view the coverage report locally:
+
+```bash
+# Generate HTML report
+python -m pytest --cov --cov-config=.coveragerc --cov-report=html
+
+# Generate terminal and XML reports
+python -m pytest --cov --cov-config=.coveragerc --cov-report=term --cov-report=xml
+```
+
+Then open `coverage_html_report/index.html` in your browser.
+
+### CI Pipeline Coverage
+
+The GitHub Actions workflow runs tests with coverage reporting and uploads the results to Codecov. The workflow is configured to:
+
+1. Run tests with coverage reporting
+2. Generate XML and terminal reports
+3. Upload the coverage report to Codecov
+4. Check that coverage meets a minimum threshold (currently 30%)
+
+You can view the coverage reports in the GitHub Actions workflow logs and on Codecov.
 
 ## Testing Hardware-Dependent Components
 

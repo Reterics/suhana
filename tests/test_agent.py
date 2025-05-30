@@ -1,8 +1,6 @@
-import pytest
 from unittest.mock import patch, MagicMock, call
 
 from engine import agent
-
 
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")

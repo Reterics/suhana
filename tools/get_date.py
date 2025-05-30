@@ -1,7 +1,7 @@
 name = "get_date"
 description = "Tells the current date"
 pattern = r"\bwhat('?s| is)?\b.*\bdate\b"
+from datetime import datetime
 
-def action():
-    from datetime import datetime
-    print(f"Today is: {datetime.now().strftime('%Y-%m-%d')}")
+def action(user_input: str = None):
+    return f"Today is: {datetime.now().strftime('%Y-%m-%d')}"

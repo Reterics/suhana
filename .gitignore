@@ -1,4 +1,5 @@
 .venv
+venv
 .env
 .idea
 settings.json
@@ -17,3 +18,4 @@ speech.wav
 *.log
 /logs/
 *.log.*
+.coverage

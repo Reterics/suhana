@@ -128,6 +128,46 @@ Hello, I'm Suhana 🦙 — powered by: OLLAMA (llama3)
 | `!engine`       | Show the current model + backend        |
 | `!switch openai`| Switch between Ollama and OpenAI        |
 | `!exit`         | Leave the session                       |
+| `help`          | Show available tools and commands       |
+| `!remember fact`| Add a memory fact                       |
+| `!recall`       | List all memory facts                   |
+| `!forget keyword`| Remove memory entries matching keyword |
+
+## 🧰 Available Tools
+
+Suhana comes with a variety of built-in tools that extend its capabilities:
+
+| Tool           | Description                             | Example Usage                        |
+|----------------|-----------------------------------------|--------------------------------------|
+| `help`         | Lists available tools and commands      | "help" or "what can you do?"         |
+| `get_date`     | Tells the current date                  | "what is the date today?"            |
+| `get_time`     | Tells the current time                  | "what is the time now?"              |
+| `add_note`     | Adds a personal note or reminder        | "remember to buy milk"               |
+| `list_notes`   | Lists all stored notes by date          | "show my notes"                      |
+| `update_profile`| Updates user preferences or profile    | "set preference theme to dark"       |
+| `web_search`   | Searches the web using various engines  | "search for Python programming"      |
+| `calculator`   | Performs basic math calculations        | "calculate 2 + 2 * 3"                |
+| `weather`      | Gets current weather for a location     | "what's the weather in New York?"    |
+
+### Web Search
+
+The web search tool supports multiple search engines:
+
+```
+search for Python programming           # Uses DuckDuckGo by default
+search with bing for machine learning   # Uses Bing search engine
+search with brave for climate change    # Uses Brave search engine
+```
+
+### Calculator
+
+The calculator tool supports various mathematical operations and functions:
+
+- Basic arithmetic: `+`, `-`, `*`, `/`, `**` (power), `%` (modulo), `//` (floor division)
+- Functions: `abs`, `round`, `min`, `max`, `sum`, `sin`, `cos`, `tan`, `sqrt`, `log`, `log10`, `exp`
+- Constants: `pi`, `e`
+
+Example: "calculate sin(pi/2) + sqrt(16)"
 
 ---
 
@@ -183,6 +223,47 @@ A sample `profile.json`:
 | Ollama   | ✅ Required if selected   | llama3, mistral, gemma, phi, etc.  |
 | OpenAI   | ✅ Optional               | Requires API key                   |
 | LocalHF  | 🔜 Planned                | Hugging Face local models          |
+
+---
+
+## 🧪 Testing
+
+### Running Tests
+
+The project uses pytest for testing. To run tests:
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run specific test file
+python -m pytest tests/test_profile_meta.py
+
+# Run with verbose output
+python -m pytest -v
+
+# Run with coverage report
+python -m pytest --cov --cov-config=.coveragerc
+```
+
+### Code Coverage
+
+The project includes code coverage reporting in the GitHub Actions CI pipeline. The coverage report is generated using pytest-cov and uploaded to Codecov.
+
+To view the coverage report locally:
+
+```bash
+python -m pytest --cov --cov-config=.coveragerc --cov-report=html
+```
+
+Then open `coverage_html_report/index.html` in your browser.
+
+### Creating New Tests
+
+1. Create a new file in the `tests` directory with the naming pattern `test_<module_name>.py`
+2. Import the module/function to be tested
+3. Write test functions that assert expected behavior
+4. Use fixtures for common setup/teardown operations
 
 ---
 
