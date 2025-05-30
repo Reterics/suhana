@@ -1,6 +1,7 @@
 langchain~=0.3.25
 langchain_core~=0.3.58
 langchain_community~=0.3.24
+langchain-huggingface~=0.2.0
 sentence-transformers
 faiss-cpu
 PyYAML
@@ -22,6 +23,5 @@ numpy~=1.26.4
 soundfile~=0.13.1
 python-multipart
 bs4~=0.0.2
-
 pytest~=8.3.5
 beautifulsoup4~=4.13.4

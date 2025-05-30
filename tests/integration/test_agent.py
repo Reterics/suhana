@@ -1,5 +1,7 @@
 from unittest.mock import patch, MagicMock, call
 
+import pytest
+
 from engine import agent
 
 @patch("engine.agent.load_settings")
@@ -62,7 +64,7 @@ def test_run_agent_normal_input(mock_handle_input, mock_input, mock_save_convers
     mock_handle_input.assert_called_once_with("hello", "ollama", mock_profile, mock_load_settings.return_value)
     mock_save_conversation.assert_called_once_with("test-conversation-id", mock_profile)
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -90,7 +92,7 @@ def test_run_agent_tool_match(mock_match_tools, mock_input, mock_load_tools,
     assert mock_input.call_count == 2
     mock_match_tools.assert_called_once_with("what time is it", [])
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -119,7 +121,7 @@ def test_run_agent_switch_backend(mock_switch_backend, mock_input, mock_load_too
     assert mock_input.call_count == 2
     mock_switch_backend.assert_called_once_with("openai", settings)
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -146,7 +148,7 @@ def test_run_agent_remember_command(mock_add_memory, mock_input, mock_load_tools
     assert mock_input.call_count == 2
     mock_add_memory.assert_called_once_with("I like pizza")
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -174,7 +176,7 @@ def test_run_agent_recall_command(mock_recall_memory, mock_input, mock_load_tool
     assert mock_input.call_count == 2
     mock_recall_memory.assert_called_once()
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -202,7 +204,7 @@ def test_run_agent_forget_command(mock_forget_memory, mock_input, mock_load_tool
     assert mock_input.call_count == 2
     mock_forget_memory.assert_called_once_with("pizza")
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -234,7 +236,7 @@ def test_run_agent_load_command_invalid(mock_list_meta, mock_input, mock_load_to
     # Load conversation should be called only once for the initial load
     assert mock_load_conversation.call_count == 1
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -271,7 +273,7 @@ def test_run_agent_load_command_valid(mock_list_meta, mock_input, mock_load_tool
         call("conv1")
     ])
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -311,7 +313,7 @@ def test_run_agent_reindex_command(mock_get_typed, mock_subprocess, mock_input,
     mock_vectorstore_manager.reset_vectorstore.assert_called_once()
     mock_vectorstore_manager.get_vectorstore.assert_called_with(mock_profile)
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -337,7 +339,7 @@ def test_run_agent_mode_command(mock_input, mock_load_tools, mock_load_conversat
     assert mock_input.call_count == 2
     assert mock_profile["mode"] == "creative"
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -364,7 +366,7 @@ def test_run_agent_project_command(mock_input, mock_load_tools, mock_load_conver
     assert mock_profile["project_path"] == "/path/to/project"
     assert mock_profile["mode"] == "development"
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -404,7 +406,7 @@ def test_run_agent_voice_mode(mock_save_conversation, mock_handle_input, mock_sp
     mock_speak_text.assert_called_once_with("Hello, I'm Suhana. How can I help you?")
     mock_save_conversation.assert_called_once_with("test-conversation-id", mock_profile)
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")
@@ -439,7 +441,7 @@ def test_run_agent_streaming_mode(mock_handle_input, mock_input, mock_load_tools
     assert mock_input.call_count == 2
     mock_handle_input.assert_called_once_with("hello", "ollama", mock_profile, mock_load_settings.return_value)
 
-
+@pytest.mark.expensive
 @patch("engine.agent.load_settings")
 @patch("engine.agent.create_new_conversation")
 @patch("engine.agent.load_conversation")

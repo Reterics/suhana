@@ -6,12 +6,12 @@ from engine.di import DIContainer
 
 # Define a protocol for testing
 @runtime_checkable
-class TestServiceInterface(Protocol):
+class ServiceInterface(Protocol):
     def get_value(self) -> str:
         ...
 
 # Concrete implementation of the test service
-class TestService:
+class Service:
     def __init__(self, value: str = "default"):
         self.value = value
 
@@ -19,7 +19,7 @@ class TestService:
         return self.value
 
 # Another implementation for testing type checking
-class AnotherTestService:
+class AnotherService:
     def get_value(self) -> str:
         return "another"
 
@@ -31,7 +31,7 @@ def container():
 def test_register_and_get():
     """Test basic registration and retrieval."""
     container = DIContainer()
-    service = TestService("test_value")
+    service = Service("test_value")
 
     container.register("test_service", service)
     retrieved = container.get("test_service")
@@ -51,12 +51,12 @@ def test_register_factory():
     container = DIContainer()
 
     def factory(_):
-        return TestService("factory_created")
+        return Service("factory_created")
 
     container.register_factory("factory_service", factory)
     service = container.get("factory_service")
 
-    assert isinstance(service, TestService)
+    assert isinstance(service, Service)
     assert service.get_value() == "factory_created"
 
     # Second retrieval should return the same instance
@@ -66,14 +66,14 @@ def test_register_factory():
 def test_get_or_default():
     """Test get_or_default method."""
     container = DIContainer()
-    default_service = TestService("default")
+    default_service = Service("default")
 
     # Should return default for nonexistent service
     result = container.get_or_default("nonexistent", default_service)
     assert result is default_service
 
     # Should return registered service if it exists
-    registered_service = TestService("registered")
+    registered_service = Service("registered")
     container.register("test_service", registered_service)
     result = container.get_or_default("test_service", default_service)
     assert result is registered_service
@@ -81,21 +81,21 @@ def test_get_or_default():
 def test_get_typed():
     """Test get_typed method with correct type."""
     container = DIContainer()
-    service = TestService()
+    service = Service()
     container.register("test_service", service)
 
     # Should work with correct type
-    typed_service = container.get_typed("test_service", TestService)
+    typed_service = container.get_typed("test_service", Service)
     assert typed_service is service
 
     # Should work with protocol
-    protocol_service = container.get_typed("test_service", TestServiceInterface)
+    protocol_service = container.get_typed("test_service", ServiceInterface)
     assert protocol_service is service
 
 def test_get_typed_wrong_type():
     """Test get_typed method with incorrect type."""
     container = DIContainer()
-    service = TestService()
+    service = Service()
     container.register("test_service", service)
 
     # Should raise TypeError for wrong type
@@ -107,12 +107,12 @@ def test_factory_with_container_arg():
     container = DIContainer()
 
     # Create a factory that uses the container to get another service
-    container.register("dependency", TestService("dependency"))
+    container.register("dependency", Service("dependency"))
 
     def factory(container):
         # This factory uses the container to get another service
         dependency = container.get("dependency")
-        return TestService(f"factory_with_{dependency.get_value()}")
+        return Service(f"factory_with_{dependency.get_value()}")
 
     container.register_factory("factory_service", factory)
 
@@ -135,7 +135,7 @@ def test_get_typed_nonexistent():
 
     # Should raise KeyError for nonexistent service
     with pytest.raises(KeyError):
-        container.get_typed("nonexistent", TestService)
+        container.get_typed("nonexistent", Service)
 
 def test_global_container():
     """Test that the global container instance exists."""
@@ -144,7 +144,7 @@ def test_global_container():
     assert isinstance(global_container, DIContainer)
 
     # Register a service to the global container
-    service = TestService("global")
+    service = Service("global")
     global_container.register("global_test", service)
 
     # Retrieve it to verify

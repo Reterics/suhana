@@ -1,6 +1,8 @@
 import sys
+import pytest
 from engine import voice
 
+@pytest.mark.expensive
 def test_speak_text():
     """Test the speak_text function with a simple text input."""
     print("Testing speak_text function...")

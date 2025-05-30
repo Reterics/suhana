@@ -30,6 +30,7 @@ def mock_search_results():
 
         yield
 
+@pytest.mark.expensive
 def test_web_search_default_engine(mock_search_results):
     """Test web search with default engine (duckduckgo)"""
     result = action("search for python programming", "python programming")
@@ -40,6 +41,7 @@ def test_web_search_default_engine(mock_search_results):
     assert "DuckDuckGo result 2" in result
     assert "DuckDuckGo result 3" in result
 
+@pytest.mark.expensive
 def test_web_search_duckduckgo_explicit(mock_search_results):
     """Test web search with explicitly specified duckduckgo engine"""
     result = action(
@@ -54,6 +56,7 @@ def test_web_search_duckduckgo_explicit(mock_search_results):
     assert "DuckDuckGo result 2" in result
     assert "DuckDuckGo result 3" in result
 
+@pytest.mark.expensive
 def test_web_search_bing(mock_search_results):
     """Test web search with bing engine"""
     result = action(
@@ -68,6 +71,7 @@ def test_web_search_bing(mock_search_results):
     assert "Bing result 2" in result
     assert "Bing result 3" in result
 
+@pytest.mark.expensive
 def test_web_search_brave(mock_search_results):
     """Test web search with brave engine"""
     result = action(
@@ -82,17 +86,20 @@ def test_web_search_brave(mock_search_results):
     assert "Brave result 2" in result
     assert "Brave result 3" in result
 
+@pytest.mark.expensive
 def test_web_search_empty_query(mock_search_results):
     """Test web search with empty query"""
     result = action("search for ", "")
     assert "I need something to search for" in result
 
+@pytest.mark.expensive
 def test_web_search_no_results():
     """Test web search with no results"""
     with patch('tools.web_search.duckduckgo', return_value=[]):
         result = action("search for nonexistent", "nonexistent")
         assert "I searched, but couldn't find anything useful" in result
 
+@pytest.mark.expensive
 def test_web_search_error():
     """Test web search with error"""
     with patch('tools.web_search.duckduckgo', side_effect=Exception("Test error")):

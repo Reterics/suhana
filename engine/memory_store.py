@@ -1,6 +1,13 @@
 from pathlib import Path
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+
+# The HuggingFaceEmbeddings class from langchain_community.embeddings is deprecated
+# To fix this properly, run: pip install -U langchain-huggingface
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    # Fallback to deprecated import
+    from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
 MEMORY_PATH = Path(__file__).parent.parent / "memory"

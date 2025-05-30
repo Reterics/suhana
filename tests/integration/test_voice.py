@@ -17,6 +17,7 @@ skip_all = pytest.mark.skipif(
 SAMPLE_AUDIO = np.zeros((16000,), dtype=np.int16)  # 1 second of silence
 SAMPLE_AUDIO_WITH_SPEECH = np.random.randint(-32768, 32767, (16000,), dtype=np.int16)  # 1 second of random noise
 
+@pytest.mark.expensive
 class TestVoice:
 
     @pytest.fixture

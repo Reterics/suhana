@@ -28,7 +28,7 @@ def test_vectorstore_manager_initialization(mock_get_embedding):
     assert manager.vectorstore is None
     assert mock_get_embedding.called
 
-
+@pytest.mark.expensive
 @patch("engine.agent_core.load_vectorstore")
 @patch("engine.agent_core.Path")
 @patch("engine.agent_core.get_embedding_model")
@@ -63,7 +63,7 @@ def test_vectorstore_manager_get_vectorstore_normal_mode(mock_get_embedding, moc
     assert manager.current_vector_mode == "normal"
     assert mock_load_vectorstore.called
 
-
+@pytest.mark.expensive
 @patch("engine.agent_core.load_vectorstore")
 @patch("engine.agent_core.Path")
 @patch("engine.agent_core.get_embedding_model")
@@ -98,7 +98,7 @@ def test_vectorstore_manager_get_vectorstore_development_mode(mock_get_embedding
     assert manager.current_vector_mode == "development"
     assert mock_load_vectorstore.called
 
-
+@pytest.mark.expensive
 @patch("engine.agent_core.load_vectorstore")
 @patch("engine.agent_core.get_embedding_model")
 def test_vectorstore_manager_reset_vectorstore(mock_get_embedding, mock_load_vectorstore):
@@ -135,7 +135,7 @@ def test_vectorstore_manager_reset_vectorstore(mock_get_embedding, mock_load_vec
     assert result is not None
     assert mock_load_vectorstore.call_count == 2  # Called once during setup and once after reset
 
-
+@pytest.mark.expensive
 @patch("engine.agent_core.subprocess.run")
 @patch("engine.agent_core.load_vectorstore")
 @patch("engine.agent_core.Path")

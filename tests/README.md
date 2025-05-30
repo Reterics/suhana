@@ -49,12 +49,47 @@ However, the coverage for these modules is still relatively low and could be imp
 - ingest_project.py
 - main.py
 
+## Test Organization
+
+The tests are organized into two main directories:
+
+- `tests/unit/`: Contains tests that are fast, deterministic, and don't require special hardware or external services. These tests should always run in CI.
+- `tests/integration/`: Contains tests that are slow, expensive, or require special hardware or external services. These tests should only run locally.
+
+### Expensive Tests
+
+Tests that require special hardware, external services, or are otherwise expensive to run are marked with the `@pytest.mark.expensive` decorator. These tests are skipped by default in CI environments.
+
+Examples of expensive tests include:
+- Tests that use real LLM APIs (OpenAI, etc.)
+- Tests that require audio hardware (microphone, speakers)
+- Tests that download large models
+- Tests that make real web requests
+
 ## Running Tests
 
-To run all tests:
+To run all tests (excluding expensive tests):
 
 ```bash
 python -m pytest
+```
+
+To run all tests, including expensive tests:
+
+```bash
+python -m pytest --runexpensive
+```
+
+To run only unit tests:
+
+```bash
+python -m pytest tests/unit/
+```
+
+To run only integration tests:
+
+```bash
+python -m pytest tests/integration/
 ```
 
 To run specific tests:
@@ -177,12 +212,22 @@ python -m pytest tests\test_voice.py
 
 When writing tests for components that depend on hardware or external services:
 
-1. Use the `@pytest.mark.skipif` decorator to skip tests in environments where they can't run
-2. Use mocking to simulate hardware and external dependencies
-3. Test both normal operation and error handling
-4. Consider different environments (Windows, macOS, Linux) and their specific requirements
+1. Use the `@pytest.mark.expensive` decorator to mark tests that should only run locally
+2. Place these tests in the `tests/integration/` directory
+3. Use mocking to simulate hardware and external dependencies
+4. Test both normal operation and error handling
+5. Consider different environments (Windows, macOS, Linux) and their specific requirements
 
-Example:
+Example using the new approach:
+
+```python
+@pytest.mark.expensive
+def test_record_audio(mock_sounddevice):
+    # Test code here
+    pass
+```
+
+For backward compatibility, you can also use the `@pytest.mark.skipif` decorator:
 
 ```python
 @pytest.mark.skipif(
@@ -193,6 +238,8 @@ def test_record_audio(mock_sounddevice):
     # Test code here
     pass
 ```
+
+The recommended approach is to use `@pytest.mark.expensive` for new tests and gradually migrate existing tests to this approach.
 
 ## Testing voice.py
 
