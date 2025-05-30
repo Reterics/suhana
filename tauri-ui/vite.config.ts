@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
+import { configDefaults } from "vitest/config";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -26,6 +27,21 @@ export default defineConfig(async () => ({
     watch: {
       // 3. tell vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
+    },
+  },
+  // Vitest configuration
+  test: {
+    globals: true,
+    environment: "jsdom",
+    exclude: [...configDefaults.exclude, "**/src-tauri/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html", "lcov"],
+      exclude: [
+        ...configDefaults.coverage.exclude,
+        "**/*.{test,spec}.{ts,tsx}",
+        "**/src-tauri/**",
+      ],
     },
   },
 }));

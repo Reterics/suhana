@@ -4,12 +4,15 @@ on:
   push:
     paths:
       - '**.py'
+      - '**.ts'
+      - '**.tsx'
       - 'tests/**'
+      - 'tauri-ui/src/**'
       - '.github/workflows/test-coverage.yml'
   pull_request:
 
 jobs:
-  coverage:
+  backend-coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -34,3 +37,32 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          flags: backend
+
+  frontend-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: tauri-ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tauri-ui
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: tauri-ui
+        run: npm run test:coverage
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: tauri-ui/coverage
+          flags: frontend

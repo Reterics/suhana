@@ -19,3 +19,4 @@ speech.wav
 /logs/
 *.log.*
 .coverage
+tauri-ui/coverage

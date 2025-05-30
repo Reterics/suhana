@@ -10,8 +10,12 @@ pattern = r"\b(set|change|update)\b.*\b(preference|name|profile)\b.*(?P<key>[A-Z
 def action(key: str, value: str) -> str:
     profile = {}
     if PROFILE_PATH.exists():
-        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-            profile = json.load(f)
+        try:
+            with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+        except json.JSONDecodeError:
+            # If the file contains invalid JSON, continue with an empty profile
+            profile = {}
 
     profile.setdefault("preferences", {})[key] = value
 
