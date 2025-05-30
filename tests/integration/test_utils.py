@@ -1,7 +1,5 @@
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
-from pathlib import Path
-import json
 
 from engine.utils import (
     configure_logging,
@@ -36,6 +34,7 @@ def mock_path():
         mock_path_instance.__truediv__.return_value = mock_path_instance  # For path / "file" operations
         yield mock_path_class, mock_path_instance
 
+@pytest.mark.expensive
 def test_configure_logging():
     """Test that configure_logging calls get_logger."""
     with patch("engine.logging_config.get_logger") as mock_get_logger:
@@ -51,6 +50,7 @@ def test_configure_logging():
         # Verify the result is the logger from get_logger
         assert result == mock_logger
 
+@pytest.mark.expensive
 def test_get_embedding_model(mock_huggingface_embeddings):
     """Test get_embedding_model creates a HuggingFaceEmbeddings instance."""
     mock_class, mock_instance = mock_huggingface_embeddings
@@ -71,6 +71,7 @@ def test_get_embedding_model(mock_huggingface_embeddings):
     # Verify HuggingFaceEmbeddings was called with the custom model name
     mock_class.assert_called_once_with(model_name="custom-model")
 
+@pytest.mark.expensive
 def test_save_vectorstore(mock_faiss, mock_path):
     """Test save_vectorstore creates and saves a FAISS vector store."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -111,6 +112,7 @@ def test_save_vectorstore(mock_faiss, mock_path):
     # Verify the result is the FAISS instance
     assert result == mock_faiss_instance
 
+@pytest.mark.expensive
 def test_save_vectorstore_no_metadata(mock_faiss, mock_path):
     """Test save_vectorstore without metadata."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -139,6 +141,7 @@ def test_save_vectorstore_no_metadata(mock_faiss, mock_path):
     # Verify the result is the FAISS instance
     assert result == mock_faiss_instance
 
+@pytest.mark.expensive
 def test_load_vectorstore_existing(mock_faiss, mock_huggingface_embeddings):
     """Test loading an existing vector store."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -179,6 +182,7 @@ def test_load_vectorstore_existing(mock_faiss, mock_huggingface_embeddings):
             allow_dangerous_deserialization=True
         )
 
+@pytest.mark.expensive
 def test_load_vectorstore_not_found():
     """Test loading a vector store that doesn't exist."""
     # Mock Path.exists to return False
@@ -196,6 +200,7 @@ def test_load_vectorstore_not_found():
         # Verify the result is None
         assert result is None
 
+@pytest.mark.expensive
 def test_load_vectorstore_error():
     """Test error handling when loading a vector store."""
     # Mock Path.exists to return True

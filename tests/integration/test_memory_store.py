@@ -29,6 +29,7 @@ def mock_path_exists():
     with patch("pathlib.Path.exists") as mock:
         yield mock
 
+@pytest.mark.expensive
 def test_load_memory_store_existing(mock_faiss, mock_path_exists):
     """Test loading an existing memory store."""
     mock_path_exists.return_value = True
@@ -46,6 +47,7 @@ def test_load_memory_store_existing(mock_faiss, mock_path_exists):
     # Verify the result is the mock instance
     assert result == mock_faiss_instance
 
+@pytest.mark.expensive
 def test_load_memory_store_new(mock_faiss, mock_path_exists):
     """Test creating a new memory store when one doesn't exist."""
     mock_path_exists.return_value = False
@@ -62,6 +64,7 @@ def test_load_memory_store_new(mock_faiss, mock_path_exists):
     # Verify the result is the mock instance
     assert result == mock_faiss_instance
 
+@pytest.mark.expensive
 def test_save_memory_store(mock_faiss):
     """Test saving a memory store."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -71,6 +74,7 @@ def test_save_memory_store(mock_faiss):
     # Verify save_local was called with correct path
     mock_faiss_instance.save_local.assert_called_once_with(str(MEMORY_PATH))
 
+@pytest.mark.expensive
 def test_add_memory_fact_existing_store(mock_faiss, mock_path_exists):
     """Test adding a memory fact to an existing store."""
     mock_path_exists.return_value = True
@@ -91,6 +95,7 @@ def test_add_memory_fact_existing_store(mock_faiss, mock_path_exists):
     # Verify save_local was called
     mock_faiss_instance.save_local.assert_called_once()
 
+@pytest.mark.expensive
 def test_add_memory_fact_new_store(mock_faiss, mock_path_exists):
     """Test adding a memory fact when no store exists."""
     mock_path_exists.return_value = False
@@ -108,6 +113,7 @@ def test_add_memory_fact_new_store(mock_faiss, mock_path_exists):
     # Verify save_local was called
     mock_faiss_instance.save_local.assert_called_once()
 
+@pytest.mark.expensive
 def test_search_memory(mock_faiss):
     """Test searching memory."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -127,6 +133,7 @@ def test_search_memory(mock_faiss):
     # Verify results match what the mock returned
     assert results == [mock_doc1, mock_doc2]
 
+@pytest.mark.expensive
 def test_recall_memory(mock_faiss):
     """Test recalling all memory."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -146,6 +153,7 @@ def test_recall_memory(mock_faiss):
     # Verify results are the page_content values
     assert results == ["Memory 1", "Memory 2"]
 
+@pytest.mark.expensive
 def test_forget_memory_with_matches(mock_faiss):
     """Test forgetting memory with matching keyword."""
     mock_faiss_class, mock_faiss_instance = mock_faiss
@@ -177,6 +185,7 @@ def test_forget_memory_with_matches(mock_faiss):
     # Verify result is 2 (number of items removed)
     assert result == 2
 
+@pytest.mark.expensive
 def test_forget_memory_no_matches(mock_faiss):
     """Test forgetting memory with no matching keyword."""
     mock_faiss_class, mock_faiss_instance = mock_faiss

@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-brightgreen)]()
 [![Powered by](https://img.shields.io/badge/LLM-Ollama%20%7C%20OpenAI-9cf)]()
+[![codecov](https://codecov.io/gh/Reterics/suhana/branch/main/graph/badge.svg?token=CPMSMW0JWS)](https://codecov.io/gh/Reterics/suhana)
 [![wakatime](https://wakatime.com/badge/user/7280a0d0-d60b-4521-a63b-d823468d18b7/project/46d7daa1-e4ae-4c9c-88f7-40193f7d5e7a.svg)](https://wakatime.com/badge/user/7280a0d0-d60b-4521-a63b-d823468d18b7/project/46d7daa1-e4ae-4c9c-88f7-40193f7d5e7a)
 
 > Suhana _(수하나)_ is your self-hosted AI companion: a modular chat agent with a personality, local knowledge base, and the ability to run commands — all without giving away your data.
@@ -94,7 +95,7 @@ You need **Python 3.11+** installed. Then choose one of the following:
 setup.bat
 ```
 
-> This will create a virtualenv, install dependencies, and auto-generate `settings.json` and `profile.json` if missing.
+> This will create a virtualenv, install runtime dependencies from `requirements.txt`, and auto-generate `settings.json` and `profile.json` if missing.
 
 ---
 
@@ -228,6 +229,16 @@ A sample `profile.json`:
 ---
 
 ## 🧪 Testing
+
+### Installing Development Dependencies
+
+For testing and development, you'll need additional dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+This will install both runtime dependencies and development tools like pytest and pytest-cov.
 
 ### Running Tests
 
