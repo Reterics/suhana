@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { CodeBlock } from '../components/CodeBlock';
-import * as highlightCodeModule from '../utils/highlightCode';
+import { CodeBlock } from './CodeBlock.tsx';
+import * as highlightCodeModule from '../utils/highlightCode.ts';
 
 // Mock the highlightCode function
 vi.mock('../utils/highlightCode', () => ({

@@ -118,17 +118,18 @@ export function FolderSelector({onSelect, onClose}: { onSelect: (path: string) =
         <div className="flex flex-col gap-4">
           <div className="flex gap-2 bg-gray-50 p-2 rounded border border-gray-200">
             <div className="flex gap-1">
-              <button onClick={goBack} disabled={historyPosition <= 0}
+              <button data-testId="backButton" onClick={goBack} disabled={historyPosition <= 0}
                       className="px-2 py-2 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
                       title="Go back"><ChevronLeft className="h-4 w-4"/></button>
-              <button onClick={goForward} disabled={historyPosition >= history.length - 1}
+              <button data-testId="forwardButton" onClick={goForward} disabled={historyPosition >= history.length - 1}
                       className="px-2 py-2 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
                       title="Go forward"><ChevronRight className="h-4 w-4"/></button>
-              <button onClick={goUp} disabled={pathParts.length <= 1}
+              <button data-testId="upButton" onClick={goUp} disabled={pathParts.length <= 1}
                       className="px-2 py-2 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
                       title="Go to parent directory"><ChevronUp className="h-4 w-4"/></button>
             </div>
             <input
+              data-testId="inputPath"
               type="text"
               className="flex-1 border border-gray-200 px-3 py-2 rounded text-sm bg-white focus:ring-2 focus:ring-black focus:border-black focus:outline-none"
               value={inputPath}
@@ -167,7 +168,7 @@ export function FolderSelector({onSelect, onClose}: { onSelect: (path: string) =
             {showRecents && recentProjects.length > 0 && (
               <div className="mb-2">
                 <h4 className="font-medium text-sm text-gray-600 mb-2 px-2">Recent Projects</h4>
-                <div className="flex flex-col gap-1">
+                <div data-testId="recentFolders"  className="flex flex-col gap-1">
                   {recentProjects.map(project => (
                     <button
                       key={project}
@@ -186,7 +187,7 @@ export function FolderSelector({onSelect, onClose}: { onSelect: (path: string) =
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-1">
+            <div data-testId="folderList"  className="grid grid-cols-1 gap-1">
               {folders.length === 0 && !isLoading ? (
                 <div className="text-center text-gray-400 py-8">
                   No folders found in this directory
@@ -228,11 +229,13 @@ export function FolderSelector({onSelect, onClose}: { onSelect: (path: string) =
             </button>
             <div className="flex gap-2">
               <button
+                data-testId="showRecentsButton"
                 onClick={() => setShowRecents(!showRecents)}
                 className="text-sm px-3 py-2 rounded border border-gray-200 text-gray-700 hover:bg-gray-100"
                 title={showRecents ? 'Hide recent projects' : 'Show recent projects'}
               >{showRecents ? 'Hide Recents' : 'Show Recents'}</button>
               <button
+                data-testId="selectFolderButton"
                 onClick={() => onSelect(currentPath)}
                 className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-900 shadow-sm"
               >Select This Folder

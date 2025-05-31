@@ -158,6 +158,7 @@ export function App() {
                 </span>
               )}
               <button
+                data-testId="project-path-selector"
                 onClick={() => setFolderSelectorOpen(true)}
                 className="flex items-center gap-2 px-3 py-1 text-sm rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 transition"
               >
