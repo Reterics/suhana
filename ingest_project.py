@@ -15,13 +15,11 @@ import sys
 import argparse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
-import json
-
-from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 from engine.utils import configure_logging, get_embedding_model, save_vectorstore
+from engine.project_detector import detect_project_type
 
 # Configure logging
 logger = configure_logging(__name__)
@@ -48,7 +46,7 @@ LANGUAGE_EXTENSIONS: Dict[str, Set[str]] = {
     'dockerfile': {'Dockerfile'},
 }
 
-# Mapping from file extension to Language enum for language-aware splitting
+# Mapping from file extension to language string for language identification
 EXTENSION_TO_LANGUAGE: Dict[str, Optional[str]] = {
     '.py': 'python',
     '.js': 'js',
@@ -103,7 +101,7 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         nargs='+',
         default=[],
-        help='Directories or files to exclude (e.g., node_modules, .git)'
+        help='Additional directories or files to exclude (common patterns like .git, node_modules, etc. are excluded by default)'
     )
     parser.add_argument(
         '--verbose',
@@ -120,7 +118,7 @@ def get_all_supported_extensions() -> Set[str]:
         extensions.update(ext_set)
     return extensions
 
-def get_language_for_file(file_path: Path) -> Optional[Language]:
+def get_language_for_file(file_path: Path) -> Optional[str]:
     """Determine the programming language for a given file path."""
     # Check for exact filename matches first (e.g., Dockerfile)
     filename = file_path.name
@@ -138,27 +136,51 @@ def get_appropriate_splitter(
     default_chunk_overlap: int
 ) -> RecursiveCharacterTextSplitter:
     """Get the appropriate text splitter for a given file."""
-    language = get_language_for_file(file_path)
-
-    if language:
-        return RecursiveCharacterTextSplitter(
-            language=language,
-            chunk_size=default_chunk_size,
-            chunk_overlap=default_chunk_overlap
-        )
-
-    # Default to recursive character splitter for unsupported languages
+    # Use a single constructor without the language parameter
+    # as TextSplitter.__init__() doesn't accept a 'language' parameter
     return RecursiveCharacterTextSplitter(
         chunk_size=default_chunk_size,
         chunk_overlap=default_chunk_overlap
     )
 
 def should_exclude(path: Path, exclude_patterns: List[str]) -> bool:
-    """Check if a path should be excluded based on patterns."""
+    """
+    Check if a path should be excluded based on patterns.
+
+    Automatically excludes:
+    - Files and folders starting with a dot (like .git, .venv)
+    - Common package-related folders (node_modules, dist, build, venv, logs)
+    - Any paths matching user-provided exclude patterns
+    """
+    # Get the path as a string for pattern matching
     path_str = str(path)
+
+    # Check if any part of the path starts with a dot (like .git, .venv)
+    for part in path.parts:
+        if part.startswith('.'):
+            return True
+
+    # Common package-related folders to exclude
+    common_excludes = [
+        'node_modules',
+        'dist',
+        'build',
+        'venv',
+        '.venv',
+        'logs',
+        '__pycache__'
+    ]
+
+    # Check for common package folders
+    for exclude in common_excludes:
+        if exclude in path_str:
+            return True
+
+    # Check user-provided exclude patterns
     for pattern in exclude_patterns:
         if pattern in path_str:
             return True
+
     return False
 
 def process_file(
@@ -211,8 +233,13 @@ def index_project(
         embedding_model_name: Name of the HuggingFace embedding model
         chunk_size: Size of text chunks for indexing
         chunk_overlap: Overlap between text chunks
-        exclude_patterns: List of patterns to exclude
+        exclude_patterns: List of additional patterns to exclude (beyond defaults)
         verbose: Whether to enable verbose logging
+
+    Notes:
+        The following are automatically excluded without needing to specify:
+        - Files and folders starting with a dot (like .git, .venv)
+        - Common package-related folders (node_modules, dist, build, venv, logs)
 
     Returns:
         Tuple of (number of files processed, number of chunks indexed)
@@ -254,6 +281,9 @@ def index_project(
     if all_documents:
         logger.info(f"Creating vector store with {len(all_documents)} chunks from {files_processed} files")
 
+        # Detect project type and extract metadata
+        project_metadata = detect_project_type(project_path)
+
         # Create metadata about the indexing
         metadata = {
             'files_processed': files_processed,
@@ -263,6 +293,7 @@ def index_project(
             'chunk_overlap': chunk_overlap,
             'project_path': str(project_path),
             'excluded_patterns': exclude_patterns,
+            'project_info': project_metadata,
         }
 
         # Save vector store and metadata

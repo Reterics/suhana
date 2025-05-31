@@ -98,7 +98,12 @@ export function ChatProvider({
 
   const apiReady = !error && !loading;
   useEffect(() => {
-    if (!apiKey || apiKey === lastCheckedKey.current) return;
+    if (!apiKey) {
+      setLoading(false);
+      return;
+    }
+    if (apiKey === lastCheckedKey.current) return;
+    localStorage.setItem('suhana_key', apiKey)
     lastCheckedKey.current = apiKey;
     void listConversations().then(() => setLoading(false));
   }, [apiKey]);

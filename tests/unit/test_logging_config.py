@@ -9,7 +9,6 @@ from engine.logging_config import (
     get_logger,
     set_log_level,
     get_log_config,
-    LogLevel
 )
 
 @pytest.fixture
@@ -21,16 +20,16 @@ def temp_log_dir():
 @pytest.fixture
 def reset_logging():
     """Reset logging configuration after each test."""
-    # Store original handlers
-    root_logger = logging.getLogger()
-    original_handlers = root_logger.handlers.copy()
-    original_level = root_logger.level
+    # Store original handlers for uvicorn logger
+    uvicorn_logger = logging.getLogger("uvicorn")
+    original_handlers = uvicorn_logger.handlers.copy()
+    original_level = uvicorn_logger.level
 
     yield
 
     # Restore original configuration
-    root_logger.handlers = original_handlers
-    root_logger.setLevel(original_level)
+    uvicorn_logger.handlers = original_handlers
+    uvicorn_logger.setLevel(original_level)
 
 def test_configure_logging_creates_handlers(temp_log_dir, reset_logging):
     """Test that configure_logging creates the expected handlers."""
@@ -43,15 +42,16 @@ def test_configure_logging_creates_handlers(temp_log_dir, reset_logging):
         log_dir=temp_log_dir
     )
 
-    root_logger = logging.getLogger()
+    # Use uvicorn logger instead of root logger
+    uvicorn_logger = logging.getLogger("uvicorn")
 
     # Should have at least two handlers (console and file)
-    assert len(root_logger.handlers) >= 2
+    assert len(uvicorn_logger.handlers) >= 2
 
     # Verify handler types
-    console_handlers = [h for h in root_logger.handlers
+    console_handlers = [h for h in uvicorn_logger.handlers
                        if isinstance(h, logging.StreamHandler) and not hasattr(h, 'baseFilename')]
-    file_handlers = [h for h in root_logger.handlers
+    file_handlers = [h for h in uvicorn_logger.handlers
                     if hasattr(h, 'baseFilename')]
 
     assert len(console_handlers) >= 1
@@ -81,7 +81,7 @@ def test_set_log_level_changes_handler_levels(reset_logging):
     configure_logging()
 
     # Set console level to DEBUG
-    set_log_level(LogLevel.DEBUG, handler_type="console")
+    set_log_level("DEBUG", handler_type="console")
 
     root_logger = logging.getLogger()
     console_handlers = [h for h in root_logger.handlers
@@ -96,11 +96,6 @@ def test_set_log_level_changes_handler_levels(reset_logging):
     for handler in root_logger.handlers:
         assert handler.level == logging.WARNING
 
-def test_log_level_from_string_invalid():
-    """Test that LogLevel.from_string handles invalid level names."""
-    # Should default to INFO for invalid level name
-    level = LogLevel.from_string("INVALID_LEVEL")
-    assert level == LogLevel.INFO
 
 def test_configure_logging_creates_log_dir(reset_logging):
     """Test that configure_logging creates the log directory if it doesn't exist."""

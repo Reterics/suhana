@@ -7,7 +7,7 @@ This module contains shared utilities used across the Suhana codebase.
 import json
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Tuple
 
 from langchain_community.vectorstores import FAISS
 
@@ -72,8 +72,10 @@ def save_vectorstore(
     Returns:
         The created FAISS vector store
     """
-    target_path = Path(target_dir)
+    target_path = Path(target_dir).resolve()
     target_path.mkdir(parents=True, exist_ok=True)
+    if not target_path.exists():
+        logger.error("Directory creation failed. Check path and permissions:", target_path)
 
     # Create vector store
     vectorstore = FAISS.from_documents(documents, embedding_model)
@@ -89,7 +91,7 @@ def save_vectorstore(
 def load_vectorstore(
     path: Union[str, Path],
     embedding_model: Optional[HuggingFaceEmbeddings] = None
-) -> Optional[FAISS]:
+) -> Tuple[Optional[FAISS], Optional[Dict[str, Any]]]:
     """
     Load a FAISS vector store from the specified path.
 
@@ -98,23 +100,35 @@ def load_vectorstore(
         embedding_model: The embedding model to use (if None, a default model will be created)
 
     Returns:
-        The loaded FAISS vector store or None if loading fails
+        A tuple of (vectorstore, metadata) where vectorstore is the loaded FAISS vector store
+        and metadata is the metadata dictionary, or (None, None) if loading fails
     """
     path_obj = Path(path)
 
     if not (path_obj / "index.faiss").exists():
-        logger.error(f"❌ Vector store not found at {path}")
-        return None
+        logger.error(f"Vector store not found at {path}")
+        return None, None
 
     if embedding_model is None:
         embedding_model = get_embedding_model()
 
+    # Load metadata if it exists
+    metadata = None
+    metadata_path = path_obj / "metadata.json"
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load metadata: {e}")
+
     try:
-        return FAISS.load_local(
+        vectorstore = FAISS.load_local(
             str(path_obj),
             embedding_model,
             allow_dangerous_deserialization=True
         )
+        return vectorstore, metadata
     except Exception as e:
-        logger.error(f"❌ Failed to load vector store: {e}")
-        return None
+        logger.error(f"Failed to load vector store: {e}")
+        return None, None

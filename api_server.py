@@ -8,11 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-
+from engine.engine_config import load_settings
 from engine.agent_core import handle_input
 from engine.api_key_store import load_valid_api_keys
 from engine.di import container
-from engine.engine_config import load_settings
 from engine.conversation_store import (
     create_new_conversation,
     load_conversation,
@@ -122,7 +121,15 @@ def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(
             # Silently fail if we can't update settings
             pass
 
-    return {"conversation_id": conversation_id, "mode": profile["mode"], "project_path": profile["project_path"] }
+    # Get project metadata if available
+    project_metadata = vectorstore_manager.project_metadata
+
+    return {
+        "conversation_id": conversation_id,
+        "mode": profile["mode"],
+        "project_path": profile["project_path"],
+        "project_metadata": project_metadata
+    }
 
 @app.post("/conversations/new")
 def new_conversation():

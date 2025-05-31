@@ -30,6 +30,7 @@ class VectorStoreManager(VectorStoreManagerInterface):
         self._current_vector_mode = None
         self._vectorstore = None
         self._embedding_model = get_embedding_model()
+        self._project_metadata = None
 
     @property
     def current_vector_mode(self) -> Optional[str]:
@@ -50,6 +51,11 @@ class VectorStoreManager(VectorStoreManagerInterface):
     def embedding_model(self):
         """Get the embedding model."""
         return self._embedding_model
+
+    @property
+    def project_metadata(self) -> Optional[Dict[str, Any]]:
+        """Get the project metadata."""
+        return self._project_metadata
 
     def reset_vectorstore(self) -> None:
         """
@@ -72,7 +78,7 @@ class VectorStoreManager(VectorStoreManagerInterface):
             VectorStoreError: If there's an issue with the vectorstore
         """
         mode = "normal"
-        path = None
+        path: None | str  = None
 
         if profile is not None:
             mode = profile.get("mode", "normal")
@@ -82,38 +88,59 @@ class VectorStoreManager(VectorStoreManagerInterface):
         if mode is None or (mode == "development" and path is None):
             mode = "normal"
 
+        prev_path = ''
+        if self._project_metadata is not None and 'path' in self._project_metadata:
+            prev_path = self._project_metadata['path']
+        logger.info(f"📄 Get Vectorstore - Mode: {mode} Path: {path} Previous Path: {prev_path}")
+
         # If mode hasn't changed, return the existing vectorstore
-        if mode == self._current_vector_mode and self._vectorstore is not None:
+        if mode == self._current_vector_mode and self._vectorstore is not None and prev_path == path:
             return self._vectorstore
 
         # Update the current mode
         self._current_vector_mode = mode
 
         # Determine the path to the vectorstore
-        if mode == "development" and profile.get("project_path"):
-            path = Path(profile["project_path"]).name
-        else:
-            path = VECTORSTORE_PATH
+        vectorstore_path = VECTORSTORE_PATH
+        if mode == "development" and path is not None:
+            vectorstore_path = Path(path)
+            logger.info("📄 Vectorstore — running ingest_project.py to update project...")
+            try:
+                subprocess.run(["python", "ingest_project.py", path, "--target", path], check=True)
+            except subprocess.CalledProcessError as e:
+                raise VectorStoreError(
+                    f"Failed to run ingest_project.py: {e}",
+                    details={"path": path},
+                    cause=e
+                )
 
-        # Check if the vectorstore exists
-        if not (Path(path) / "index.faiss").exists():
-            if mode == "development":
-                logger.warning("❌ Vectorstore not found — please run ingest_project.py.")
-                return None
-            elif mode == "normal":
-                logger.info("📄 Vectorstore not found — running ingest.py...")
-                try:
-                    subprocess.run(["python", "ingest.py"], check=True)
-                except subprocess.CalledProcessError as e:
-                    raise VectorStoreError(
-                        f"Failed to run ingest.py: {e}",
-                        details={"path": str(path)},
-                        cause=e
-                    )
 
-        # Load the vectorstore
+        if not (vectorstore_path / "index.faiss").exists() and mode == "normal":
+            logger.info("📄 Vectorstore not found — running ingest.py...")
+            try:
+                subprocess.run(["python", "ingest.py"], check=True)
+            except subprocess.CalledProcessError as e:
+                raise VectorStoreError(
+                    f"Failed to run ingest.py: {e}",
+                    details={"path": str(path)},
+                    cause=e
+                )
+
+        # Load the vectorstore and metadata
         try:
-            self._vectorstore = load_vectorstore(path, self._embedding_model)
+            vectorstore, metadata = load_vectorstore(vectorstore_path, self._embedding_model)
+            if vectorstore is None:
+                return None
+
+            # Store the vectorstore and extract project metadata
+            self._vectorstore = FAISVectorStoreAdapter(vectorstore)
+
+            # Extract project metadata if available
+            if metadata and 'project_info' in metadata:
+                self._project_metadata = metadata['project_info']
+            else:
+                self._project_metadata = None
+
             return self._vectorstore
         except Exception as e:
             raise VectorStoreError(
