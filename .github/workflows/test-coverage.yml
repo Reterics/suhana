@@ -30,7 +30,7 @@ jobs:
 
       - name: Run unit tests with coverage
         run: |
-          python -m pytest --cov=engine --cov-report=term --cov-report=xml tests/unit/
+          python -m pytest --forked --cov=engine --cov-report=term --cov-report=xml tests/unit/
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
