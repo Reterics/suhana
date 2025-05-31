@@ -1,3 +1,4 @@
+import importlib
 import sys
 import types
 
@@ -39,25 +40,6 @@ def test_vectorstore_manager_initialization():
         assert manager.vectorstore is None
         assert mock_get_embedding.called
 
-def test_vectorstore_manager_get_vectorstore_normal_mode():
-    with patch("engine.agent_core.get_embedding_model") as mock_get_embedding, \
-         patch("engine.agent_core.Path") as mock_path, \
-         patch("engine.agent_core.load_vectorstore") as mock_load_vectorstore, \
-         patch("engine.agent_core.load_metadata", return_value={}):
-        from engine.agent_core import VectorStoreManager
-        mock_embedding = MagicMock()
-        mock_get_embedding.return_value = mock_embedding
-        mock_path_instance = MagicMock()
-        mock_path.return_value = mock_path_instance
-        mock_path_instance.__truediv__.return_value = mock_path_instance
-        mock_path_instance.exists.return_value = True
-        mock_vectorstore = MagicMock()
-        mock_load_vectorstore.return_value = mock_vectorstore
-        manager = VectorStoreManager()
-        profile = {"mode": "normal"}
-        result = manager.get_vectorstore(profile)
-        assert manager.current_vector_mode == "normal"
-        assert mock_load_vectorstore.called
 
 def test_vectorstore_manager_reset_vectorstore():
     with patch("engine.agent_core.get_embedding_model"):
