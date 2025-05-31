@@ -225,6 +225,10 @@ def browse_folders(path: str = ""):
         "recent_projects": recent_projects
     }
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the API server."""
     import uvicorn
     uvicorn.run("api_server:app", host="127.0.0.1", port=8000, reload=False)
+
+if __name__ == "__main__":
+    main()
