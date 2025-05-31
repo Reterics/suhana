@@ -6,10 +6,13 @@ This module contains shared utilities used across the Suhana codebase.
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, Tuple
 
 from langchain_community.vectorstores import FAISS
+
+from engine.error_handling import VectorStoreError
 
 # The HuggingFaceEmbeddings class from langchain_community.embeddings is deprecated
 # To fix this properly, run: pip install -U langchain-huggingface
@@ -88,10 +91,39 @@ def save_vectorstore(
 
     return vectorstore
 
+
+def load_metadata(path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    """
+    Load metadata from the specified path.
+
+    Args:
+        path: Path to the project
+
+    Returns:
+        A mmetadata is the metadata dictionary, or (None, None) if loading fails
+    """
+    path_obj = Path(path)
+    # Load metadata if it exists
+    metadata = None
+    metadata_path = path_obj / "metadata.json"
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata_raw = json.load(f)
+                if metadata_raw is not None:
+                    metadata = metadata_raw.get('project_info', None)
+                else:
+                    logger.warning("Metadata is invalid")
+        except Exception as e:
+            logger.warning(f"Failed to load metadata: {e}")
+    return metadata
+
+
+
 def load_vectorstore(
     path: Union[str, Path],
     embedding_model: Optional[HuggingFaceEmbeddings] = None
-) -> Tuple[Optional[FAISS], Optional[Dict[str, Any]]]:
+) -> Optional[FAISS]:
     """
     Load a FAISS vector store from the specified path.
 
@@ -107,20 +139,10 @@ def load_vectorstore(
 
     if not (path_obj / "index.faiss").exists():
         logger.error(f"Vector store not found at {path}")
-        return None, None
+        return None
 
     if embedding_model is None:
         embedding_model = get_embedding_model()
-
-    # Load metadata if it exists
-    metadata = None
-    metadata_path = path_obj / "metadata.json"
-    if metadata_path.exists():
-        try:
-            with open(metadata_path, 'r') as f:
-                metadata = json.load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load metadata: {e}")
 
     try:
         vectorstore = FAISS.load_local(
@@ -128,7 +150,25 @@ def load_vectorstore(
             embedding_model,
             allow_dangerous_deserialization=True
         )
-        return vectorstore, metadata
+        return vectorstore
     except Exception as e:
         logger.error(f"Failed to load vector store: {e}")
-        return None, None
+        return None
+
+
+def refresh_vectorstore(
+    path: Union[str, Path],
+    embedding_model: Optional[HuggingFaceEmbeddings] = None
+) -> Optional[FAISS]:
+    target = Path(path).name
+    logger.info("📄 Vectorstore — running ingest_project.py to update project...")
+    try:
+        subprocess.run(["python", "ingest_project.py", target, "--target", target], check=True)
+    except subprocess.CalledProcessError as e:
+        raise VectorStoreError(
+            f"Failed to run ingest_project.py: {e}",
+            details={"path": path},
+            cause=e
+        )
+
+    return load_vectorstore(path, embedding_model)

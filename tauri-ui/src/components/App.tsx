@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
 import { BASE_URL, useChat } from '../context/ChatContext.tsx';
-import { Menu, FolderSearch } from 'lucide-preact';
+import { Menu, FolderSearch, Package, ChevronLeft } from 'lucide-preact';
 import { ChatToolbar } from './ChatToolbar.tsx';
 import { ChatMessages } from './ChatMessages.tsx';
 import { FolderSelector } from './FolderSelector.tsx';
+import { ProjectMetadata } from './ProjectMetadata.tsx';
 
 export function App() {
   const {
@@ -16,10 +17,13 @@ export function App() {
     apiKey,
     messages,
     setMessages,
-    sendStreamingMessage
+    sendStreamingMessage,
+    projectMetadata,
+    setProjectMetadata
   } = useChat();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [currentMode, setCurrentMode] = useState<'normal' | 'development'>(
     'normal'
   );
@@ -91,13 +95,18 @@ export function App() {
     if (response?.mode) {
       setCurrentMode(response.mode);
     }
+    if (response?.project_metadata) {
+      setProjectMetadata(response.project_metadata);
+      // Automatically open the right sidebar when project metadata is available
+      setRightSidebarOpen(true);
+    }
   }
 
   useEffect(() => {
     if (conversationId) {
       void updateConversationMetadata(currentMode, projectPath);
     }
-  }, [currentMode, projectPath, conversationId]);
+  }, [currentMode]);
 
   //
   return (
@@ -155,6 +164,19 @@ export function App() {
                 <FolderSearch className="h-4 w-4 text-neutral-600" />
               </button>
             </div>
+
+            {projectMetadata && (
+              <button
+                onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+                className="flex items-center gap-2 px-3 py-1 text-sm rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 transition"
+                title="Toggle Project Metadata"
+              >
+                <Package className="h-4 w-4 text-blue-500" />
+                <span className="text-sm font-medium">
+                  {projectMetadata.name || projectMetadata.project_type || 'Project Info'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -163,11 +185,41 @@ export function App() {
         <ChatToolbar onSend={handleSendMessage} />
       </main>
 
+      <aside
+        className={`transition-all duration-300 bg-white border-l border-gray-200 shadow-sm h-full flex flex-col ${
+          rightSidebarOpen ? 'w-64 p-2' : 'w-0 overflow-hidden'
+        }`}
+      >
+        {projectMetadata && (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-blue-500" />
+                <h2 className="text-sm font-semibold text-gray-700">
+                  Project Metadata
+                </h2>
+              </div>
+              <button
+                onClick={() => setRightSidebarOpen(false)}
+                className="text-gray-400 hover:text-black transition"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <ProjectMetadata metadata={projectMetadata} />
+            </div>
+          </>
+        )}
+      </aside>
+
       {folderSelectorOpen && (
         <FolderSelector
               onSelect={path => {
-                setProjectPath(path);
                 setFolderSelectorOpen(false);
+                if (conversationId) {
+                  void updateConversationMetadata(currentMode, path);
+                }
               }}
               onClose={() => setFolderSelectorOpen(false)}
             />

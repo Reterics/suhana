@@ -1,11 +1,12 @@
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, Generator
 
 from engine.interfaces import VectorStoreInterface, VectorStoreManagerInterface, MemoryStoreInterface, LLMBackendInterface
 from engine.profile import summarize_profile_for_prompt
 from langchain_community.vectorstores import FAISS
-from engine.utils import get_embedding_model, load_vectorstore
+from engine.utils import get_embedding_model, load_vectorstore, load_metadata
 from engine.di import container
 from engine.error_handling import (
     error_boundary,
@@ -64,6 +65,18 @@ class VectorStoreManager(VectorStoreManagerInterface):
         self._vectorstore = None
 
     @error_boundary(fallback_value=None, error_type=VectorStoreError)
+    def reload_vectorstore(self):
+        if self._project_metadata is None:
+            return None
+        vectorstore_path = self._project_metadata.get('path', VECTORSTORE_PATH)
+        vectorstore = load_vectorstore(vectorstore_path, self._embedding_model)
+        if vectorstore is None:
+            return None
+        # Store the vectorstore and extract project metadata
+        self._vectorstore = FAISVectorStoreAdapter(vectorstore)
+        return self._vectorstore
+
+    @error_boundary(fallback_value=None, error_type=VectorStoreError)
     def get_vectorstore(self, profile: Optional[Dict[str, Any]] = None) -> Optional[VectorStoreInterface]:
         """
         Get the appropriate vectorstore based on the profile and mode.
@@ -88,32 +101,22 @@ class VectorStoreManager(VectorStoreManagerInterface):
         if mode is None or (mode == "development" and path is None):
             mode = "normal"
 
-        prev_path = ''
+        prev_path: None | str = None
         if self._project_metadata is not None and 'path' in self._project_metadata:
             prev_path = self._project_metadata['path']
-        logger.info(f"📄 Get Vectorstore - Mode: {mode} Path: {path} Previous Path: {prev_path}")
 
-        # If mode hasn't changed, return the existing vectorstore
+        # If mode and path hasn't changed, return the existing vectorstore
         if mode == self._current_vector_mode and self._vectorstore is not None and prev_path == path:
+            logger.info(f"📄 Get Vectorstore - Return cached store for {path}")
             return self._vectorstore
-
-        # Update the current mode
-        self._current_vector_mode = mode
 
         # Determine the path to the vectorstore
         vectorstore_path = VECTORSTORE_PATH
-        if mode == "development" and path is not None:
-            vectorstore_path = Path(path)
-            logger.info("📄 Vectorstore — running ingest_project.py to update project...")
-            try:
-                subprocess.run(["python", "ingest_project.py", path, "--target", path], check=True)
-            except subprocess.CalledProcessError as e:
-                raise VectorStoreError(
-                    f"Failed to run ingest_project.py: {e}",
-                    details={"path": path},
-                    cause=e
-                )
 
+        logger.info(f"📄 Get Vectorstore - Mode: {mode} Path: {path} Previous Path: {prev_path}")
+
+        # Update the current mode
+        self._current_vector_mode = mode
 
         if not (vectorstore_path / "index.faiss").exists() and mode == "normal":
             logger.info("📄 Vectorstore not found — running ingest.py...")
@@ -126,28 +129,11 @@ class VectorStoreManager(VectorStoreManagerInterface):
                     cause=e
                 )
 
-        # Load the vectorstore and metadata
-        try:
-            vectorstore, metadata = load_vectorstore(vectorstore_path, self._embedding_model)
-            if vectorstore is None:
-                return None
+        # Load metadata
+        self._project_metadata = load_metadata(vectorstore_path)
 
-            # Store the vectorstore and extract project metadata
-            self._vectorstore = FAISVectorStoreAdapter(vectorstore)
+        return self.reload_vectorstore()
 
-            # Extract project metadata if available
-            if metadata and 'project_info' in metadata:
-                self._project_metadata = metadata['project_info']
-            else:
-                self._project_metadata = None
-
-            return self._vectorstore
-        except Exception as e:
-            raise VectorStoreError(
-                f"Failed to load vectorstore from {path}",
-                details={"path": str(path)},
-                cause=e
-            )
 
 # Adapter for FAISS vectorstore to implement VectorStoreInterface
 class FAISVectorStoreAdapter(VectorStoreInterface):
@@ -362,10 +348,9 @@ def handle_input(
                 details={"backend": backend, "query": user_input},
                 cause=e
             )
-    else:
-        raise BackendError(
-            f"Unknown backend: {backend}",
-            details={"available_backends": [name.replace("_backend", "") for name in container._services.keys() if name.endswith("_backend")]}
-        )
+        return reply
 
-    return reply
+    raise BackendError(
+        f"Unknown backend: {backend}",
+        details={"available_backends": [name.replace("_backend", "") for name in container._services.keys() if name.endswith("_backend")]}
+    )

@@ -30,6 +30,8 @@ interface ChatState {
   conversationList: ConversationMeta[];
   loadConversation: (id: string) => Promise<void>;
   transcribe: (blob: Blob) => Promise<string>;
+  projectMetadata: ProjectMeta | null;
+  setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
 }
 
 export interface ConversationMeta {
@@ -37,6 +39,12 @@ export interface ConversationMeta {
   title: string;
   created: string;
   last_updated: string;
+}
+
+export interface ProjectMeta extends Record<string, unknown> {
+  name?: string;
+  project_type: string;
+  dependencies?: string[];
 }
 
 const ChatContext = createContext<ChatState | null>(null);
@@ -88,6 +96,7 @@ export function ChatProvider({
   const [conversationList, setConversationList] = useState<ConversationMeta[]>(
     []
   );
+  const [projectMetadata, setProjectMetadata] = useState<ProjectMeta|null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [apiKey, setApiKey] = useState(
     localStorage.getItem('suhana_key') || ''
@@ -127,6 +136,7 @@ export function ChatProvider({
     );
     setConversationId(id);
     setMessages(data?.history as ChatMessage[] || []);
+    setProjectMetadata(data?.project_metadata as ProjectMeta || null)
   };
 
   const sendMessage = async (
@@ -214,7 +224,9 @@ export function ChatProvider({
         loadConversation,
         sendMessage,
         sendStreamingMessage,
-        transcribe
+        transcribe,
+        projectMetadata,
+        setProjectMetadata
       }}
     >
       {children}

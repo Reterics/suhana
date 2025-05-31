@@ -35,6 +35,7 @@ def list_conversation_meta() -> List[dict]:
 
 def load_conversation(conversation_id: str) -> dict:
     path = get_conversation_path(conversation_id)
+    meta_path = get_conversation_meta_path(conversation_id)
     if not path.exists():
         return {**meta, "history": []}
 
@@ -43,8 +44,12 @@ def load_conversation(conversation_id: str) -> dict:
         data.setdefault("mode", "normal")
         data.setdefault("project_path", None)
         data.update({k: meta[k] for k in PROFILE_META_KEYS})
-        return data
 
+    if meta_path.exists():
+        with open(meta_path, "r", encoding="utf-8") as mf:
+            data.update(json.load(mf))
+
+    return data
 
 def save_conversation(conversation_id: str, profile: dict):
     path = get_conversation_path(conversation_id)

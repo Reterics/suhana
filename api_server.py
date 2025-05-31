@@ -18,6 +18,7 @@ from engine.conversation_store import (
     save_conversation, list_conversation_meta
 )
 from engine.interfaces import VectorStoreManagerInterface
+from engine.utils import load_metadata
 
 # Export the vectorstore_manager instance for direct imports
 vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
@@ -81,7 +82,11 @@ def get_conversations():
 
 @app.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: str):
-    return load_conversation(conversation_id)
+    profile = load_conversation(conversation_id)
+    if profile is not None and "project_path" in profile:
+        profile["project_metadata"] = load_metadata(profile["project_path"])
+    return profile
+
 
 @app.post("/conversations/{conversation_id}")
 def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(verify_api_key)):
@@ -122,13 +127,16 @@ def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(
             pass
 
     # Get project metadata if available
-    project_metadata = vectorstore_manager.project_metadata
+    if profile is not None and "project_path" in profile:
+        profile["project_metadata"] = load_metadata(profile["project_path"])
+
+    save_conversation(conversation_id, profile)
 
     return {
         "conversation_id": conversation_id,
         "mode": profile["mode"],
         "project_path": profile["project_path"],
-        "project_metadata": project_metadata
+        "project_metadata": profile["project_metadata"]
     }
 
 @app.post("/conversations/new")
