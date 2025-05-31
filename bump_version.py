@@ -35,7 +35,7 @@ def update_in_file(path, new_version):
 
 
 def git_commit_and_tag(new_version):
-    subprocess.check_call(["git", "add", "."])
+    subprocess.check_call(["git", "add", "-u"])
     subprocess.check_call(["git", "commit", "-m", f"chore(release): prepare v{new_version}"])
     subprocess.check_call(["git", "tag", "-a", f"v{new_version}", "-m", f"chore(release): v{new_version}"])
     print(f" Git commit and tag v{new_version} created.")
