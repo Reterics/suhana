@@ -211,3 +211,75 @@ def test_transcribe_audio_file_not_found(monkeypatch):
     monkeypatch.setattr(voice.os, "remove", remove_side_effect)
     text = voice.transcribe_audio()
     assert text == "Test transcript"
+
+def test_speak_text_other_attribute_error(monkeypatch):
+    import engine.voice as voice
+    fake_tts_instance = MagicMock()
+    fake_tts_instance.tts.side_effect = AttributeError("unexpected error")
+    monkeypatch.setattr(voice, "TTS", MagicMock(return_value=fake_tts_instance))
+    monkeypatch.setattr(voice, "sf", MagicMock())
+    monkeypatch.setattr(voice.subprocess, "run", MagicMock())
+    monkeypatch.setattr(voice.uuid, "uuid4", MagicMock(return_value=MagicMock(hex="err")))
+    monkeypatch.setattr(voice.os, "remove", MagicMock())
+    monkeypatch.setattr(voice.os.path, "abspath", lambda f: "/tmp/" + f)
+    voice._tts = None
+    try:
+        voice.speak_text("error test")
+    except AttributeError as e:
+        assert "unexpected error" in str(e)
+
+def test_record_audio_exception(monkeypatch):
+    import engine.voice as voice
+    # sd.rec raises an exception
+    monkeypatch.setattr(voice.sd, "rec", MagicMock(side_effect=RuntimeError("device error")))
+    monkeypatch.setattr(voice.sd, "wait", MagicMock())
+    monkeypatch.setattr(voice.np, "squeeze", lambda arr: arr)
+    try:
+        voice.record_audio(1, 16000)
+    except RuntimeError as e:
+        assert "device error" in str(e)
+
+def test_record_audio_until_silence_fallback(monkeypatch):
+    import engine.voice as voice
+    import numpy as np
+
+    with patch("engine.voice.estimate_noise_floor", side_effect=RuntimeError("fail!")):
+        monkeypatch.setattr(voice, "record_audio", lambda *a, **k: np.array([[1, 2], [3, 4]], dtype=np.int16))
+        audio = voice.record_audio_until_silence()
+        assert (audio == np.array([1, 2, 3, 4])).all()
+
+def test_get_whisper_model_with_arg(monkeypatch):
+    import engine.voice as voice
+    fake_model = MagicMock()
+    monkeypatch.setattr(voice.whisper, "load_model", MagicMock(return_value=fake_model))
+    voice._model = None
+    model = voice.get_whisper_model()
+    assert model is fake_model
+
+def test_record_audio_until_silence_empty(monkeypatch):
+    import engine.voice as voice
+    import numpy as np
+
+    monkeypatch.setattr(voice, "estimate_noise_floor", lambda *a, **k: 1)
+    class DummyStream:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(voice.sd, "InputStream", lambda *a, **k: DummyStream())
+    monkeypatch.setattr(voice.np, "concatenate", lambda arrs: np.concatenate(arrs) if arrs else np.array([], dtype=np.int16))
+    monkeypatch.setattr(voice.np, "squeeze", lambda arr: arr)
+    # Patch input so the stream callback is never called, so audio_chunks remains empty
+    audio = voice.record_audio_until_silence()
+    assert isinstance(audio, np.ndarray)
+
+def test_transcribe_audio_transcribe_exception(monkeypatch):
+    import engine.voice as voice
+    monkeypatch.setattr(voice, "record_audio_until_silence", lambda *a, **k: [1,2,3])
+    monkeypatch.setattr(voice, "save_temp_wav", lambda *a, **k: "/tmp/audio.wav")
+    mock_model = MagicMock()
+    mock_model.transcribe.side_effect = RuntimeError("transcribe failed")
+    monkeypatch.setattr(voice, "get_whisper_model", lambda: mock_model)
+    monkeypatch.setattr(voice.os, "remove", lambda path: None)
+    try:
+        voice.transcribe_audio()
+    except RuntimeError as e:
+        assert "transcribe failed" in str(e)

@@ -54,8 +54,14 @@ def estimate_noise_floor(duration=0.2, samplerate=16000):
     return np.abs(audio).mean()
 
 def record_audio_until_silence(threshold = 100, silence_duration=2.0, max_duration=15, samplerate=16000):
-    baseline = estimate_noise_floor()
-    threshold = baseline + 50
+    try:
+        baseline = estimate_noise_floor()
+        threshold = baseline + 50
+    except Exception as e:
+        print(f"⚠️ estimate_noise_floor failed: {e}, falling back to manual recording...")
+        audio = record_audio(duration=5)
+        return audio.flatten() if hasattr(audio, "flatten") else audio
+
     if threshold > 100:
         threshold = 100
 
