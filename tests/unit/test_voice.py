@@ -26,7 +26,9 @@ def mock_dependencies():
     sys.modules['TTS'] = MagicMock()
     sys.modules['TTS.api'] = MagicMock()
     sys.modules['soundfile'] = MagicMock()
-
+    sys.modules['scipy'] = MagicMock()
+    sys.modules['scipy.io'] = MagicMock()
+    sys.modules['scipy.io.wavfile'] = MagicMock()
     yield
 
 # ---- UNIT TEST FOR speak_text ----
@@ -119,19 +121,22 @@ def test_record_audio_until_silence_no_speech(monkeypatch):
 def test_save_temp_wav(monkeypatch):
     import engine.voice as voice
 
-    # Patch tempfile.NamedTemporaryFile to a dummy file object
     class DummyFile:
         name = "/tmp/test.wav"
         def __enter__(self): return self
         def __exit__(self, *a): return False
 
     monkeypatch.setattr(voice.tempfile, "NamedTemporaryFile", MagicMock(return_value=DummyFile()))
+    fake_write = MagicMock()
+    # Patch the write function in your sys.modules mock!
+    sys.modules['scipy.io.wavfile'].write = fake_write
 
-    # Patch the local import for write (scipy.io.wavfile.write)
-    with patch("scipy.io.wavfile.write") as fake_write:
-        res = voice.save_temp_wav(np.array([1, 2, 3]))
-        assert res == "/tmp/test.wav"
-        fake_write.assert_called_once()
+    audio = np.array([1, 2, 3])
+    samplerate = 12345
+    res = voice.save_temp_wav(audio, samplerate)
+
+    assert res == "/tmp/test.wav"
+    fake_write.assert_called_once_with("/tmp/test.wav", samplerate, audio)
 
 def test_transcribe_audio(monkeypatch):
     import engine.voice as voice
