@@ -19,7 +19,7 @@ def mock_dependencies():
     huggingface_mod.HuggingFaceEmbeddings = MagicMock()
     sys.modules['langchain_huggingface'] = huggingface_mod
     sys.modules['faiss'] = MagicMock()
-    sys.modules['numpy'] = MagicMock()
+    #sys.modules['numpy'] = MagicMock()
 
     # Mock voice module dependencies
     sys.modules['sounddevice'] = MagicMock()
