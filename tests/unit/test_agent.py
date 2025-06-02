@@ -28,6 +28,9 @@ def mock_dependencies():
     sys.modules['TTS.api'] = MagicMock()
     sys.modules['soundfile'] = MagicMock()
 
+    # AI Libraries
+    sys.modules['google.generativeai'] = MagicMock()
+
     yield
 
 

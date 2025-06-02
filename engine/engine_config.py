@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from engine.logging_config import configure_logging, get_log_config, set_log_level
 
@@ -67,10 +67,10 @@ def save_settings(settings):
         json.dump(settings, f, indent=2)
 
 def switch_backend(new_backend, settings):
-    if new_backend in ["ollama", "openai"]:
+    if new_backend in ["ollama", "openai", "gemini"]:
         settings["llm_backend"] = new_backend
         save_settings(settings)
         print(f"🔁 Switched to {new_backend.upper()}")
     else:
-        print("❌ Supported engines: ollama, openai")
+        print("❌ Supported engines: ollama, openai, gemini")
     return new_backend
