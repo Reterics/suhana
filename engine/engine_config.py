@@ -67,10 +67,10 @@ def save_settings(settings):
         json.dump(settings, f, indent=2)
 
 def switch_backend(new_backend, settings):
-    if new_backend in ["ollama", "openai", "gemini"]:
+    if new_backend in ["ollama", "openai", "gemini", "claude"]:
         settings["llm_backend"] = new_backend
         save_settings(settings)
         print(f"🔁 Switched to {new_backend.upper()}")
     else:
-        print("❌ Supported engines: ollama, openai, gemini")
+        print("❌ Supported engines: ollama, openai, gemini, claude")
     return new_backend

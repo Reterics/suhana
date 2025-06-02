@@ -30,7 +30,7 @@ def mock_dependencies():
 
     # AI Libraries
     sys.modules['google.generativeai'] = MagicMock()
-
+    sys.modules['anthropic'] = MagicMock()
     yield
 
 

@@ -250,6 +250,8 @@ def register_backends():
     """Register LLM backend factories with the container."""
     from engine.backends.ollama import query_ollama
     from engine.backends.openai import query_openai
+    from engine.backends.gemini import query_gemini
+    from engine.backends.claude import query_claude
     from engine.memory_store import search_memory
 
     # Register memory store
@@ -259,6 +261,8 @@ def register_backends():
     # Register LLM backends
     container.register("ollama_backend", LLMBackendAdapter(query_ollama))
     container.register("openai_backend", LLMBackendAdapter(query_openai))
+    container.register("gemini_backend", LLMBackendAdapter(query_gemini))
+    container.register("claude_backend", LLMBackendAdapter(query_claude))
 
 
 # Register backends

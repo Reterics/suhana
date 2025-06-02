@@ -20,6 +20,11 @@ def mock_dependencies():
     sys.modules['langchain_huggingface'] = huggingface_mod
     sys.modules['faiss'] = MagicMock()
     #sys.modules['numpy'] = MagicMock()
+
+    # AI Libraries
+    sys.modules['google.generativeai'] = MagicMock()
+    sys.modules['anthropic'] = MagicMock()
+
     yield
 
 # Helper class used in tests
@@ -178,10 +183,12 @@ def test_register_backends():
     with patch("engine.agent_core.container.register") as mock_register, \
          patch("engine.backends.ollama.query_ollama"), \
          patch("engine.backends.openai.query_openai"), \
+         patch("engine.backends.gemini.query_gemini"), \
+         patch("engine.backends.claude.query_claude"), \
          patch("engine.memory_store.search_memory"):
         from engine.agent_core import register_backends, MemoryStoreAdapter, LLMBackendAdapter
         register_backends()
-        assert mock_register.call_count == 3
+        assert mock_register.call_count == 5
         # At least one of each type is registered
         types = [type(call[0][1]) for call in mock_register.call_args_list]
         assert MemoryStoreAdapter in types
