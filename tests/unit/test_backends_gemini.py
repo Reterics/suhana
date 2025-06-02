@@ -3,15 +3,6 @@ import types
 import pytest
 from unittest.mock import MagicMock
 
-@pytest.fixture(autouse=True)
-def fake_genai_module(monkeypatch):
-    # Before import, inject fake genai module into sys.modules
-    fake_genai = types.ModuleType("google.generativeai")
-    fake_GenerativeModel = MagicMock()
-    fake_genai.GenerativeModel = fake_GenerativeModel
-    sys.modules["google.generativeai"] = fake_genai
-    yield
-
 
 @pytest.fixture(autouse=True)
 def mock_dependencies():
@@ -32,6 +23,11 @@ def mock_dependencies():
     sys.modules['TTS'] = MagicMock()
     sys.modules['TTS.api'] = MagicMock()
     sys.modules['soundfile'] = MagicMock()
+
+    fake_genai = types.ModuleType("google.generativeai")
+    fake_GenerativeModel = MagicMock()
+    fake_genai.GenerativeModel = fake_GenerativeModel
+    sys.modules["google.generativeai"] = fake_genai
     yield
 
 @pytest.fixture
