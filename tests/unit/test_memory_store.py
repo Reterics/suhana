@@ -21,6 +21,7 @@ def mock_dependencies():
     #sys.modules['numpy'] = MagicMock()
 
     # AI Libraries
+    sys.modules['google'] = MagicMock()
     sys.modules['google.generativeai'] = MagicMock()
     sys.modules['anthropic'] = MagicMock()
     yield
