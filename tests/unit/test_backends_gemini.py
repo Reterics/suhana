@@ -24,10 +24,7 @@ def mock_dependencies():
     sys.modules['TTS.api'] = MagicMock()
     sys.modules['soundfile'] = MagicMock()
 
-    fake_genai = types.ModuleType("google.generativeai")
-    fake_GenerativeModel = MagicMock()
-    fake_genai.GenerativeModel = fake_GenerativeModel
-    sys.modules["google.generativeai"] = fake_genai
+    sys.modules['google.generativeai'] = MagicMock()
     yield
 
 @pytest.fixture
