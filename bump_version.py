@@ -2,9 +2,13 @@ import toml
 import re
 import subprocess
 import sys
+import json
 from pathlib import Path
 
 PYPROJECT = Path("pyproject.toml")
+TAURI_PACKAGE_JSON = Path("tauri-ui/package.json")
+TAURI_CONF_JSON = Path("tauri-ui/src-tauri/tauri.conf.json")
+
 if not PYPROJECT.exists():
     print(" pyproject.toml not found!")
     sys.exit(1)
@@ -21,6 +25,31 @@ def update_pyproject_version(new_version, data):
     with open(PYPROJECT, "w", encoding="utf-8") as f:
         toml.dump(data, f)
     print(f" pyproject.toml updated to {new_version}")
+
+
+def update_tauri_version(new_version):
+    # Update package.json
+    if TAURI_PACKAGE_JSON.exists():
+        with open(TAURI_PACKAGE_JSON, "r", encoding="utf-8") as f:
+            package_data = json.load(f)
+
+        package_data["version"] = new_version
+
+        with open(TAURI_PACKAGE_JSON, "w", encoding="utf-8") as f:
+            json.dump(package_data, f, indent=2)
+        print(f" tauri-ui/package.json updated to {new_version}")
+
+    # Update tauri.conf.json
+    if TAURI_CONF_JSON.exists():
+        with open(TAURI_CONF_JSON, "r", encoding="utf-8") as f:
+            tauri_conf_data = json.load(f)
+
+        if "package" in tauri_conf_data:
+            tauri_conf_data["package"]["version"] = new_version
+
+            with open(TAURI_CONF_JSON, "w", encoding="utf-8") as f:
+                json.dump(tauri_conf_data, f, indent=2)
+            print(f" tauri-ui/src-tauri/tauri.conf.json updated to {new_version}")
 
 
 def update_in_file(path, new_version):
@@ -47,11 +76,60 @@ def git_push(new_version):
     print(" Changes and tag pushed to remote.")
 
 
+def get_latest_git_tag():
+    try:
+        # Get the latest tag from git
+        tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True
+        ).strip()
+
+        # Remove 'v' prefix if present
+        if tag.startswith('v'):
+            tag = tag[1:]
+
+        return tag
+    except subprocess.CalledProcessError:
+        # No tags found
+        return None
+
 def get_current_version(data):
+    # Get version from pyproject.toml
+    file_version = None
     if "tool" in data and "poetry" in data["tool"]:
-        return data["tool"]["poetry"]["version"]
+        file_version = data["tool"]["poetry"]["version"]
     elif "project" in data:
-        return data["project"]["version"]
+        file_version = data["project"]["version"]
+
+    # Get version from git tags
+    git_version = get_latest_git_tag()
+
+    # If we have both versions, compare them and return the newer one
+    if file_version and git_version:
+        file_parts = list(map(int, file_version.split('.')))
+        git_parts = list(map(int, git_version.split('.')))
+
+        # Compare major, minor, patch versions
+        for f, g in zip(file_parts, git_parts):
+            if f > g:
+                print(f" Using version from pyproject.toml: {file_version} (newer than git tag: {git_version})")
+                return file_version
+            elif g > f:
+                print(f" Using version from git tag: {git_version} (newer than pyproject.toml: {file_version})")
+                return git_version
+
+        # If we get here, versions are equal
+        print(f" Versions in pyproject.toml and git tag are the same: {file_version}")
+        return file_version
+
+    # Return whichever version we have, or None if neither exists
+    if file_version:
+        print(f" Using version from pyproject.toml: {file_version} (no git tag found)")
+        return file_version
+    elif git_version:
+        print(f" Using version from git tag: {git_version} (no version in pyproject.toml)")
+        return git_version
     else:
         return None
 
@@ -75,7 +153,7 @@ def main():
     else:
         current_version = get_current_version(data)
         if not current_version:
-            print("Could not detect current version from pyproject.toml.")
+            print("Could not detect current version from pyproject.toml or git tags.")
             sys.exit(1)
         suggestion = suggest_next_patch(current_version)
         prompt = f"Enter new version (x.y.z) [default: {suggestion}]: "
@@ -88,6 +166,7 @@ def main():
     update_pyproject_version(new_version, data)
     update_in_file("README.md", new_version)
     update_in_file("settings.json", new_version)
+    update_tauri_version(new_version)
     git_commit_and_tag(new_version)
 
     print(f"\n All done locally! You can review with:")
