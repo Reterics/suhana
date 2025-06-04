@@ -4,16 +4,19 @@ import { ChatMessages } from './ChatMessages';
 
 // -- Mock CodeBlock for simplicity --
 vi.mock('./CodeBlock.tsx', () => ({
-  CodeBlock: ({ code, lang }: any) =>
-    <pre data-testid="codeblock">{lang}:{code}</pre>,
-  __esModule: true,
+  CodeBlock: ({ code, lang }: any) => (
+    <pre data-testid="codeblock">
+      {lang}:{code}
+    </pre>
+  ),
+  __esModule: true
 }));
 
 describe('ChatMessages', () => {
   beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
-      value: vi.fn(),
+      value: vi.fn()
     });
   });
 
@@ -27,9 +30,7 @@ describe('ChatMessages', () => {
   });
 
   it('renders a plain text message', () => {
-    render(<ChatMessages messages={[
-      { role: 'user', content: 'Hello!' }
-    ]} />);
+    render(<ChatMessages messages={[{ role: 'user', content: 'Hello!' }]} />);
     // Should be right-aligned
     const msg = screen.getByText('Hello!');
     expect(msg).toBeVisible();
@@ -37,9 +38,11 @@ describe('ChatMessages', () => {
   });
 
   it('renders an assistant message left-aligned', () => {
-    render(<ChatMessages messages={[
-      { role: 'assistant', content: 'How can I help?' }
-    ]} />);
+    render(
+      <ChatMessages
+        messages={[{ role: 'assistant', content: 'How can I help?' }]}
+      />
+    );
 
     const msg = screen.getByText('How can I help?');
     expect(msg).toBeVisible();
@@ -48,9 +51,7 @@ describe('ChatMessages', () => {
 
   it('renders code blocks and text fragments', () => {
     const msg = `Here is code:\n\`\`\`js\nconsole.log("hi")\n\`\`\`\nDid you like it?`;
-    render(<ChatMessages messages={[
-      { role: 'assistant', content: msg }
-    ]} />);
+    render(<ChatMessages messages={[{ role: 'assistant', content: msg }]} />);
     // Code block present
     const codeBlock = screen.getByTestId('codeblock');
     expect(codeBlock).toHaveTextContent('js:console.log("hi")');
@@ -67,9 +68,7 @@ describe('ChatMessages', () => {
       '```bash\necho ok\n```',
       'End.'
     ].join('\n');
-    render(<ChatMessages messages={[
-      { role: 'assistant', content: msg }
-    ]} />);
+    render(<ChatMessages messages={[{ role: 'assistant', content: msg }]} />);
     const codeBlocks = screen.getAllByTestId('codeblock');
     expect(codeBlocks.length).toBe(2);
     expect(codeBlocks[0]).toHaveTextContent('python:print(1)');
@@ -88,14 +87,18 @@ describe('ChatMessages', () => {
       value: scrollSpy
     });
 
-    const { rerender } = render(<ChatMessages messages={[
-      { role: 'user', content: 'Hi' }
-    ]} />);
+    const { rerender } = render(
+      <ChatMessages messages={[{ role: 'user', content: 'Hi' }]} />
+    );
     // Initial call
-    rerender(<ChatMessages messages={[
-      { role: 'user', content: 'Hi' },
-      { role: 'assistant', content: 'Hello' }
-    ]} />);
+    rerender(
+      <ChatMessages
+        messages={[
+          { role: 'user', content: 'Hi' },
+          { role: 'assistant', content: 'Hello' }
+        ]}
+      />
+    );
     // The scrollIntoView should have been called
     expect(scrollSpy).toHaveBeenCalled();
   });

@@ -4,14 +4,18 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 vi.mock('./style.css', () => ({}), { virtual: true }); // mock CSS import
 vi.mock('./components/App', () => ({
   App: () => <div data-testid="app-component">App Loaded</div>,
-  __esModule: true,
+  __esModule: true
 }));
 vi.mock('./context/ChatContext.tsx', async () => {
-  const actual = await vi.importActual<typeof import('./context/ChatContext.tsx')>('./context/ChatContext.tsx');
+  const actual = await vi.importActual<
+    typeof import('./context/ChatContext.tsx')
+  >('./context/ChatContext.tsx');
   return {
     ...actual,
-    ChatProvider: ({ children }: { children: any }) => <div data-testid="chat-provider">{children}</div>,
-    __esModule: true,
+    ChatProvider: ({ children }: { children: any }) => (
+      <div data-testid="chat-provider">{children}</div>
+    ),
+    __esModule: true
   };
 });
 

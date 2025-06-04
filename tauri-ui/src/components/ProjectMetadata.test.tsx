@@ -7,7 +7,7 @@ vi.mock('lucide-preact', () => ({
   ChevronDown: () => <span data-testid="icon-down" />,
   ChevronRight: () => <span data-testid="icon-right" />,
   Code: () => <span data-testid="icon-code" />,
-  __esModule: true,
+  __esModule: true
 }));
 
 describe('ProjectMetadata', () => {
@@ -24,7 +24,7 @@ describe('ProjectMetadata', () => {
           version: '1.0.0',
           count: 42,
           ready: true,
-          name: 'My Project', // should be skipped
+          name: 'My Project' // should be skipped
         }}
       />
     );
@@ -44,7 +44,7 @@ describe('ProjectMetadata', () => {
     render(
       <ProjectMetadata
         metadata={{
-          dependencies: ['a', 'b', 'c'],
+          dependencies: ['a', 'b', 'c']
         }}
       />
     );
@@ -65,7 +65,7 @@ describe('ProjectMetadata', () => {
     render(
       <ProjectMetadata
         metadata={{
-          config: { a: 1, b: 'two', c: { d: 3 } },
+          config: { a: 1, b: 'two', c: { d: 3 } }
         }}
       />
     );
@@ -89,10 +89,7 @@ describe('ProjectMetadata', () => {
     render(
       <ProjectMetadata
         metadata={{
-          nested: [
-            { foo: 'bar' },
-            { baz: [1, 2] },
-          ],
+          nested: [{ foo: 'bar' }, { baz: [1, 2] }]
         }}
       />
     );

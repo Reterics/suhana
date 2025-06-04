@@ -48,7 +48,9 @@ interface ChatState {
   projectMetadata: ProjectMeta | null;
   setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
   getSettings: () => Promise<{ settings: Settings; llm_options: LLMOptions }>;
-  updateSettings: (settings: Partial<Settings>) => Promise<{ settings: Settings }>;
+  updateSettings: (
+    settings: Partial<Settings>
+  ) => Promise<{ settings: Settings }>;
 }
 
 export interface ConversationMeta {
@@ -113,7 +115,9 @@ export function ChatProvider({
   const [conversationList, setConversationList] = useState<ConversationMeta[]>(
     []
   );
-  const [projectMetadata, setProjectMetadata] = useState<ProjectMeta|null>(null);
+  const [projectMetadata, setProjectMetadata] = useState<ProjectMeta | null>(
+    null
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [apiKey, setApiKey] = useState(
     localStorage.getItem('suhana_key') || ''
@@ -129,7 +133,7 @@ export function ChatProvider({
       return;
     }
     if (apiKey === lastCheckedKey.current) return;
-    localStorage.setItem('suhana_key', apiKey)
+    localStorage.setItem('suhana_key', apiKey);
     lastCheckedKey.current = apiKey;
     void listConversations().then(() => setLoading(false));
   }, [apiKey]);
@@ -152,8 +156,8 @@ export function ChatProvider({
       setError
     );
     setConversationId(id);
-    setMessages(data?.history as ChatMessage[] || []);
-    setProjectMetadata(data?.project_metadata as ProjectMeta || null)
+    setMessages((data?.history as ChatMessage[]) || []);
+    setProjectMetadata((data?.project_metadata as ProjectMeta) || null);
   };
 
   const sendMessage = async (
@@ -221,15 +225,11 @@ export function ChatProvider({
         body: form
       }
     );
-    return data?.text as string || '';
+    return (data?.text as string) || '';
   };
 
   const getSettings = async () => {
-    const data = await fetchWithKey(
-      `${BASE_URL}/settings`,
-      apiKey,
-      setError
-    );
+    const data = await fetchWithKey(`${BASE_URL}/settings`, apiKey, setError);
     return {
       settings: data?.settings as Settings,
       llm_options: data?.llm_options as LLMOptions
@@ -237,18 +237,13 @@ export function ChatProvider({
   };
 
   const updateSettings = async (settings: Partial<Settings>) => {
-    const data = await fetchWithKey(
-      `${BASE_URL}/settings`,
-      apiKey,
-      setError,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(settings)
-      }
-    );
+    const data = await fetchWithKey(`${BASE_URL}/settings`, apiKey, setError, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(settings)
+    });
     return { settings: data?.settings as Settings };
   };
 
@@ -272,7 +267,6 @@ export function ChatProvider({
         transcribe,
         projectMetadata,
         setProjectMetadata,
-        transcribe,
         getSettings,
         updateSettings
       }}

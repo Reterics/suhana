@@ -6,13 +6,13 @@ import Sidebar from './Sidebar';
 vi.mock('lucide-preact', () => ({
   Plus: () => <span data-testid="icon-plus" />,
   X: () => <span data-testid="icon-x" />,
-  __esModule: true,
+  __esModule: true
 }));
 
 const conversations = [
   { id: 'c1', title: 'First', created: '', last_updated: '' },
   { id: 'c2', title: 'Second', created: '', last_updated: '' },
-  { id: 'c3', title: '', created: '', last_updated: '' }, // Should show id
+  { id: 'c3', title: '', created: '', last_updated: '' } // Should show id
 ];
 
 describe('Sidebar', () => {
@@ -45,7 +45,9 @@ describe('Sidebar', () => {
     const { container } = render(<Sidebar conversations={[]} hidden />);
     // Should have width 0 and overflow hidden
     expect(container.querySelector('aside')!.className).toMatch(/w-0/);
-    expect(container.querySelector('aside')!.className).toMatch(/overflow-hidden/);
+    expect(container.querySelector('aside')!.className).toMatch(
+      /overflow-hidden/
+    );
   });
 
   it('calls onSelectConversation with new id on New', () => {
@@ -57,7 +59,9 @@ describe('Sidebar', () => {
 
   it('calls onSelectConversation with correct id when conversation is clicked', () => {
     const onSelect = vi.fn();
-    render(<Sidebar conversations={conversations} onSelectConversation={onSelect} />);
+    render(
+      <Sidebar conversations={conversations} onSelectConversation={onSelect} />
+    );
     // Because the conversations are reversed
     const secondBtn = screen.getByText('Second');
     fireEvent.click(secondBtn);

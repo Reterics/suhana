@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
 import { BASE_URL, useChat } from '../context/ChatContext.tsx';
-import { Menu, FolderSearch, Package, ChevronLeft, Settings as SettingsIcon } from 'lucide-preact';
+import {
+  Menu,
+  FolderSearch,
+  Package,
+  ChevronLeft,
+  Settings as SettingsIcon
+} from 'lucide-preact';
 import { ChatToolbar } from './ChatToolbar.tsx';
 import { ChatMessages } from './ChatMessages.tsx';
 import { FolderSelector } from './FolderSelector.tsx';
@@ -176,7 +182,9 @@ export function App() {
               >
                 <Package className="h-4 w-4 text-blue-500" />
                 <span className="text-sm font-medium">
-                  {projectMetadata.name || projectMetadata.project_type || 'Project Info'}
+                  {projectMetadata.name ||
+                    projectMetadata.project_type ||
+                    'Project Info'}
                 </span>
               </button>
             )}
@@ -228,20 +236,17 @@ export function App() {
 
       {folderSelectorOpen && (
         <FolderSelector
-              onSelect={path => {
-                setFolderSelectorOpen(false);
-                if (conversationId) {
-                  void updateConversationMetadata(currentMode, path);
-                }
-              }}
-              onClose={() => setFolderSelectorOpen(false)}
-            />
+          onSelect={path => {
+            setFolderSelectorOpen(false);
+            if (conversationId) {
+              void updateConversationMetadata(currentMode, path);
+            }
+          }}
+          onClose={() => setFolderSelectorOpen(false)}
+        />
       )}
 
-      <Settings
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
+      <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

@@ -22,7 +22,6 @@ const mockSendStreamingMessage = vi.fn(async (_input, onToken) => {
 });
 const mockLoadConversation = vi.fn();
 
-
 vi.mock('../context/ChatContext.tsx', () => ({
   BASE_URL: 'http://localhost:8000',
   useChat: () => ({
@@ -36,39 +35,52 @@ vi.mock('../context/ChatContext.tsx', () => ({
     setMessages: mockSetMessages,
     sendStreamingMessage: mockSendStreamingMessage,
     projectMetadata: mockProjectMetadata,
-    setProjectMetadata: mockSetProjectMetadata,
+    setProjectMetadata: mockSetProjectMetadata
   }),
-  __esModule: true,
+  __esModule: true
 }));
 
 // -- Mock all child components as stubs --
 vi.mock('./Sidebar.tsx', () => ({
-  default: ({ onSelectConversation }: any) =>
-    <aside data-testid="sidebar" onClick={() => onSelectConversation('1')}>Sidebar</aside>,
-  __esModule: true,
+  default: ({ onSelectConversation }: any) => (
+    <aside data-testid="sidebar" onClick={() => onSelectConversation('1')}>
+      Sidebar
+    </aside>
+  ),
+  __esModule: true
 }));
 vi.mock('./ChatToolbar.tsx', () => ({
-  ChatToolbar: ({ onSend }: any) =>
-    <button onClick={() => onSend('test message')} data-testid="toolbar">Send</button>,
-  __esModule: true,
+  ChatToolbar: ({ onSend }: any) => (
+    <button onClick={() => onSend('test message')} data-testid="toolbar">
+      Send
+    </button>
+  ),
+  __esModule: true
 }));
 vi.mock('./ChatMessages.tsx', () => ({
-  ChatMessages: ({ messages }: any) =>
-    <div data-testid="messages">{messages && messages.length > 0 ? messages.map((m: any, i: number) => <span key={i}>{m.content}</span>) : 'No messages'}</div>,
-  __esModule: true,
+  ChatMessages: ({ messages }: any) => (
+    <div data-testid="messages">
+      {messages && messages.length > 0
+        ? messages.map((m: any, i: number) => <span key={i}>{m.content}</span>)
+        : 'No messages'}
+    </div>
+  ),
+  __esModule: true
 }));
 vi.mock('./FolderSelector.tsx', () => ({
-  FolderSelector: ({ onSelect, onClose }: any) =>
+  FolderSelector: ({ onSelect, onClose }: any) => (
     <div data-testid="folder-selector">
       <button onClick={() => onSelect('/testpath')}>Select Folder</button>
       <button onClick={onClose}>Close</button>
-    </div>,
-  __esModule: true,
+    </div>
+  ),
+  __esModule: true
 }));
 vi.mock('./ProjectMetadata.tsx', () => ({
-  ProjectMetadata: ({ metadata }: any) =>
-    <div data-testid="project-metadata">{metadata && metadata.name}</div>,
-  __esModule: true,
+  ProjectMetadata: ({ metadata }: any) => (
+    <div data-testid="project-metadata">{metadata && metadata.name}</div>
+  ),
+  __esModule: true
 }));
 
 beforeEach(() => {
@@ -135,7 +147,7 @@ describe('App', () => {
   it('shows and closes FolderSelector modal', async () => {
     render(<App />);
     // Find and click project/folder button (adjust selector for your actual markup if needed)
-    const projectBtn = screen.getByTestId("project-path-selector");
+    const projectBtn = screen.getByTestId('project-path-selector');
     fireEvent.click(projectBtn);
 
     expect(screen.getByTestId('folder-selector')).toBeTruthy();
@@ -154,12 +166,13 @@ describe('App', () => {
     expect(screen.getByTestId('project-metadata')).toBeTruthy();
 
     // Close with ChevronLeft button (mocked as 'Close' in this test setup)
-    const closeBtn = screen.getAllByRole('button').find(b =>
-      b.title === 'Toggle Project Metadata'
-    ) || projectMetaBtn[0];
+    const closeBtn =
+      screen
+        .getAllByRole('button')
+        .find(b => b.title === 'Toggle Project Metadata') || projectMetaBtn[0];
     expect(closeBtn).toBeDefined();
     if (closeBtn) {
-       fireEvent.click(closeBtn);
+      fireEvent.click(closeBtn);
     }
   });
 });

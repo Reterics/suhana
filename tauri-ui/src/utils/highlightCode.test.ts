@@ -5,13 +5,13 @@ vi.mock('./highlighterConfig', () => ({
   highlighterConfig: {
     js: [
       { name: 'keyword', pattern: /\b(?:const|let|var|function)\b/g },
-      { name: 'number', pattern: /\b\d+\b/g },
+      { name: 'number', pattern: /\b\d+\b/g }
     ],
     py: [
       { name: 'keyword', pattern: /\bdef\b/g },
-      { name: 'string', pattern: /'[^']*'/g },
-    ],
-  },
+      { name: 'string', pattern: /'[^']*'/g }
+    ]
+  }
 }));
 
 import { highlightCode } from './highlightCode';
@@ -52,7 +52,9 @@ describe('highlightCode', () => {
   it('handles overlapping rules by applying in order', () => {
     // "const 42" should highlight both "const" and "42"
     const result = highlightCode('js', 'const 42');
-    expect(result).toContain('<span class="keyword">const</span> <span class="number">42</span>');
+    expect(result).toContain(
+      '<span class="keyword">const</span> <span class="number">42</span>'
+    );
   });
 
   it('does not crash on empty code', () => {

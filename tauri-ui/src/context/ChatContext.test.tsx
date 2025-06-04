@@ -3,7 +3,6 @@ import { render, screen, waitFor } from '@testing-library/preact';
 import { ChatProvider, useChat, BASE_URL } from './ChatContext';
 import type { ChatMessage, ProjectMeta } from './ChatContext';
 
-
 const mockProjectMeta: ProjectMeta = {
   name: 'Demo Project',
   project_type: 'ts'
@@ -23,9 +22,15 @@ describe('ChatContext', () => {
       let store: Record<string, string> = {};
       return {
         getItem: (k: string) => store[k] || null,
-        setItem: (k: string, v: string) => { store[k] = v; },
-        removeItem: (k: string) => { delete store[k]; },
-        clear: () => { store = {}; }
+        setItem: (k: string, v: string) => {
+          store[k] = v;
+        },
+        removeItem: (k: string) => {
+          delete store[k];
+        },
+        clear: () => {
+          store = {};
+        }
       } as Storage;
     })();
     globalThis.localStorage = localStorageMock;
@@ -62,7 +67,11 @@ describe('ChatContext', () => {
       );
     }
 
-    render(<ChatProvider><Consumer /></ChatProvider>);
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
     // initial: ''
     expect(screen.getByTestId('apiKey').textContent).toBe('');
 
@@ -90,7 +99,11 @@ describe('ChatContext', () => {
       testChat = useChat();
       return <div />;
     }
-    render(<ChatProvider><Consumer /></ChatProvider>);
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
     // Wait for provider to finish first fetch
     await waitFor(() => !!testChat);
 
@@ -111,7 +124,11 @@ describe('ChatContext', () => {
       testChat = useChat();
       return <div />;
     }
-    render(<ChatProvider><Consumer /></ChatProvider>);
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
     await waitFor(() => !!testChat);
 
     const resp = await testChat!.sendMessage('ping');
@@ -122,7 +139,9 @@ describe('ChatContext', () => {
       `${BASE_URL}/query`,
       expect.objectContaining({
         method: 'POST',
-        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json'
+        }),
         body: expect.stringContaining('ping')
       })
     );
@@ -135,7 +154,8 @@ describe('ChatContext', () => {
       { value: undefined, done: true }
     ];
     const getReader = () => ({
-      read: vi.fn()
+      read: vi
+        .fn()
         .mockResolvedValueOnce(readChunks[0])
         .mockResolvedValueOnce(readChunks[1])
     });
@@ -145,13 +165,17 @@ describe('ChatContext', () => {
       body: { getReader }
     }) as any;
 
-    let tokens: string[] = [];
+    const tokens: string[] = [];
     let testChat: ReturnType<typeof useChat> | null = null;
     function Consumer() {
       testChat = useChat();
       return <div />;
     }
-    render(<ChatProvider><Consumer /></ChatProvider>);
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
     await waitFor(() => !!testChat);
 
     await testChat!.sendStreamingMessage('foo', t => tokens.push(t));
@@ -169,7 +193,11 @@ describe('ChatContext', () => {
       testChat = useChat();
       return <div />;
     }
-    render(<ChatProvider><Consumer /></ChatProvider>);
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
     await waitFor(() => !!testChat);
 
     // Dummy blob
@@ -190,7 +218,11 @@ describe('ChatContext', () => {
       testChat = useChat();
       return <div />;
     }
-    render(<ChatProvider><Consumer /></ChatProvider>);
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
     await waitFor(() => !!testChat);
 
     // trigger a fetch

@@ -72,24 +72,33 @@ export function ProjectMetadata({ metadata }: ProjectMetadataProps) {
           <div key={key} className="mb-3">
             <div
               className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-1 rounded"
-              onClick={() => (Array.isArray(value) || (typeof value === 'object' && value !== null)) ? toggleExpanded(key) : null}
+              onClick={() =>
+                Array.isArray(value) ||
+                (typeof value === 'object' && value !== null)
+                  ? toggleExpanded(key)
+                  : null
+              }
             >
               <div className="flex items-center gap-1">
                 <Code className="h-3 w-3 text-gray-400" />
-                <span className="text-xs font-medium text-gray-700">{key}:</span>
+                <span className="text-xs font-medium text-gray-700">
+                  {key}:
+                </span>
                 <span className="text-xs text-gray-600">
                   {formatValue(value)}
                 </span>
               </div>
-              {(Array.isArray(value) || (typeof value === 'object' && value !== null)) && (
-                expandedKeys[key] ? (
+              {(Array.isArray(value) ||
+                (typeof value === 'object' && value !== null)) &&
+                (expandedKeys[key] ? (
                   <ChevronDown className="h-3 w-3 text-gray-500" />
                 ) : (
                   <ChevronRight className="h-3 w-3 text-gray-500" />
-                )
-              )}
+                ))}
             </div>
-            {expandedKeys[key] && (Array.isArray(value) || (typeof value === 'object' && value !== null)) &&
+            {expandedKeys[key] &&
+              (Array.isArray(value) ||
+                (typeof value === 'object' && value !== null)) &&
               renderNestedValue(key, value)}
           </div>
         ))}

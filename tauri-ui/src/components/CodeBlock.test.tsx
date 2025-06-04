@@ -52,7 +52,10 @@ describe('CodeBlock Component', () => {
     render(<CodeBlock code={code} lang={lang} />, container);
 
     // Check if highlightCode was called with the correct parameters
-    expect(highlightCodeModule.highlightCode).toHaveBeenCalledWith(lang, code.trim());
+    expect(highlightCodeModule.highlightCode).toHaveBeenCalledWith(
+      lang,
+      code.trim()
+    );
   });
 
   it('copies code to clipboard when copy button is clicked', async () => {

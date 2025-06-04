@@ -1,41 +1,48 @@
-import {render, screen, fireEvent, waitFor} from '@testing-library/preact';
-import {vi, describe, it, beforeEach, expect} from 'vitest';
-import {FolderSelector} from './FolderSelector';
+import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
+import { vi, describe, it, beforeEach, expect } from 'vitest';
+import { FolderSelector } from './FolderSelector';
 
 // Mock icons (lucide-preact)
 vi.mock('lucide-preact', () => ({
-  ChevronUp: () => <span data-testid="icon-up"/>,
-  ChevronLeft: () => <span data-testid="icon-left"/>,
-  ChevronRight: () => <span data-testid="icon-right"/>,
-  X: () => <span data-testid="icon-x"/>,
-  __esModule: true,
+  ChevronUp: () => <span data-testid="icon-up" />,
+  ChevronLeft: () => <span data-testid="icon-left" />,
+  ChevronRight: () => <span data-testid="icon-right" />,
+  X: () => <span data-testid="icon-x" />,
+  __esModule: true
 }));
 
 const FAKE_RESPONSE = {
   current: '/home/user',
   parent: '/home',
   path_parts: [
-    {name: 'Root', path: ''},
-    {name: 'home', path: '/home'},
-    {name: 'user', path: '/home/user'},
+    { name: 'Root', path: '' },
+    { name: 'home', path: '/home' },
+    { name: 'user', path: '/home/user' }
   ],
   subfolders: [
-    {name: 'projectA', path: '/home/user/projectA', is_project: true, modified: 1720000000},
-    {name: 'docs', path: '/home/user/docs', is_project: false, modified: 1710000000},
+    {
+      name: 'projectA',
+      path: '/home/user/projectA',
+      is_project: true,
+      modified: 1720000000
+    },
+    {
+      name: 'docs',
+      path: '/home/user/docs',
+      is_project: false,
+      modified: 1710000000
+    }
   ],
   separator: '/',
-  recent_projects: ['/home/user/projectA'],
+  recent_projects: ['/home/user/projectA']
 };
 
-function setupFetch(
-  resp: Partial<typeof FAKE_RESPONSE> = {},
-  ok = true
-) {
-  const data = {...FAKE_RESPONSE, ...resp};
+function setupFetch(resp: Partial<typeof FAKE_RESPONSE> = {}, ok = true) {
+  const data = { ...FAKE_RESPONSE, ...resp };
   globalThis.fetch = vi.fn().mockImplementation(() =>
     Promise.resolve({
       ok,
-      json: () => Promise.resolve(data),
+      json: () => Promise.resolve(data)
     })
   ) as any;
 }
@@ -47,7 +54,7 @@ beforeEach(() => {
 
 describe('FolderSelector', () => {
   it('renders folders and recent projects with unique test ids', async () => {
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByTestId('folderList')).toBeTruthy();
       expect(screen.getByTestId('recentFolders')).toBeTruthy();
@@ -63,18 +70,21 @@ describe('FolderSelector', () => {
 
     // Get recent project names
     const recentNames = Array.from(
-      screen.getByTestId('recentFolders').querySelectorAll('span.truncate.text-sm')
+      screen
+        .getByTestId('recentFolders')
+        .querySelectorAll('span.truncate.text-sm')
     ).map(span => span.textContent?.trim());
 
     expect(recentNames).toContain('projectA');
   });
 
-
   it('calls onClose when clicking backdrop or X', async () => {
     const onClose = vi.fn();
-    render(<FolderSelector onSelect={vi.fn()} onClose={onClose}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={onClose} />);
     // Click backdrop
-    fireEvent.click(screen.getByText('Select Project Folder').closest('.fixed')!);
+    fireEvent.click(
+      screen.getByText('Select Project Folder').closest('.fixed')!
+    );
     expect(onClose).toHaveBeenCalledTimes(1);
     // Click X button
     fireEvent.click(screen.getByTestId('icon-x').parentElement!);
@@ -82,7 +92,7 @@ describe('FolderSelector', () => {
   });
 
   it('navigates by clicking breadcrumb', async () => {
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText('user');
     const breadcrumb = screen.getByText('home');
     fireEvent.click(breadcrumb);
@@ -92,12 +102,14 @@ describe('FolderSelector', () => {
 
   it('navigates to folder and selects on double click (folder list)', async () => {
     const onSelect = vi.fn();
-    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByTestId('folderList')).toBeTruthy();
     });
 
-    const folderButtons = screen.getByTestId('folderList').querySelectorAll('button');
+    const folderButtons = screen
+      .getByTestId('folderList')
+      .querySelectorAll('button');
     // Click projectA in folders grid
     fireEvent.click(folderButtons[0]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(2); // initial + click
@@ -109,11 +121,13 @@ describe('FolderSelector', () => {
 
   it('navigates to recent project and selects on double click', async () => {
     const onSelect = vi.fn();
-    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByTestId('recentFolders')).toBeTruthy();
     });
-    const recentButtons = screen.getByTestId('recentFolders').querySelectorAll('button');
+    const recentButtons = screen
+      .getByTestId('recentFolders')
+      .querySelectorAll('button');
     // Click recent projectA
     fireEvent.click(recentButtons[0]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
@@ -125,7 +139,7 @@ describe('FolderSelector', () => {
 
   it('selects folder using Select This Folder button', async () => {
     const onSelect = vi.fn();
-    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()} />);
     await screen.findByTestId('selectFolderButton');
     fireEvent.click(screen.getByTestId('selectFolderButton'));
     expect(onSelect).toHaveBeenCalledWith('/home/user');
@@ -133,32 +147,32 @@ describe('FolderSelector', () => {
 
   it('shows error if fetch fails', async () => {
     setupFetch({}, false);
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText(/Failed to fetch folders/i)).toBeTruthy();
     });
   });
 
   it('shows No folders found if empty', async () => {
-    setupFetch({subfolders: []});
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    setupFetch({ subfolders: [] });
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText(/No folders found/i)).toBeTruthy();
     });
   });
 
   it('handles input path navigation with Enter key', async () => {
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     const input = screen.getByTestId('inputPath');
-    fireEvent.input(input, {target: {value: '/tmp'}});
-    fireEvent.keyDown(input, {key: 'Enter'});
+    fireEvent.input(input, { target: { value: '/tmp' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     const calls = (globalThis.fetch as any).mock.calls;
     expect(calls[1][0]).toContain('path=%2Ftmp');
   });
 
   it('calls onSelect("") when Cancel is clicked', async () => {
     const onSelect = vi.fn();
-    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={onSelect} onClose={vi.fn()} />);
     fireEvent.click(screen.getByText('Cancel'));
     expect(onSelect).toHaveBeenCalledWith('');
   });
@@ -168,7 +182,9 @@ describe('FolderSelector', () => {
     await waitFor(() => {
       expect(screen.getByTestId('folderList')).toBeTruthy();
     });
-    const folderButtons = screen.getByTestId('folderList').querySelectorAll('button');
+    const folderButtons = screen
+      .getByTestId('folderList')
+      .querySelectorAll('button');
     // Go into folderA to build up history
     fireEvent.click(folderButtons[0]);
     // Wait for historyPosition to update (back button enabled)
@@ -184,9 +200,8 @@ describe('FolderSelector', () => {
     fireEvent.click(forwardBtn);
   });
 
-
   it('navigates up with up button', async () => {
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByTestId('folderList')).toBeTruthy();
     });
@@ -198,9 +213,11 @@ describe('FolderSelector', () => {
   });
 
   it('toggles recents list', async () => {
-    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()}/>);
+    render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
     await screen.findByTestId('showRecentsButton');
     fireEvent.click(screen.getByTestId('showRecentsButton'));
-    expect(screen.getByTestId('showRecentsButton').textContent).toMatch(/Show Recents/);
+    expect(screen.getByTestId('showRecentsButton').textContent).toMatch(
+      /Show Recents/
+    );
   });
 });

@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Settings as SettingsType, LLMOptions, useChat } from '../context/ChatContext';
+import {
+  Settings as SettingsType,
+  LLMOptions,
+  useChat
+} from '../context/ChatContext';
 import { Settings as SettingsIcon, X } from 'lucide-preact';
 
 interface SettingsProps {
@@ -81,7 +85,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
           <div className="text-red-500 py-2">{error}</div>
         ) : settings && llmOptions ? (
           <form
-            onSubmit={(e) => {
+            onSubmit={e => {
               e.preventDefault();
               void handleSave();
             }}
@@ -93,7 +97,9 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               </label>
               <select
                 value={settings.llm_backend}
-                onChange={(e) => handleChange('llm_backend', e.currentTarget.value)}
+                onChange={e =>
+                  handleChange('llm_backend', e.currentTarget.value)
+                }
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="ollama">Ollama</option>
@@ -108,10 +114,12 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                 </label>
                 <select
                   value={settings.llm_model}
-                  onChange={(e) => handleChange('llm_model', e.currentTarget.value)}
+                  onChange={e =>
+                    handleChange('llm_model', e.currentTarget.value)
+                  }
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {llmOptions.ollama.map((model) => (
+                  {llmOptions.ollama.map(model => (
                     <option key={model} value={model}>
                       {model}
                     </option>
@@ -126,10 +134,12 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </label>
                   <select
                     value={settings.openai_model}
-                    onChange={(e) => handleChange('openai_model', e.currentTarget.value)}
+                    onChange={e =>
+                      handleChange('openai_model', e.currentTarget.value)
+                    }
                     className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {llmOptions.openai.map((model) => (
+                    {llmOptions.openai.map(model => (
                       <option key={model} value={model}>
                         {model}
                       </option>
@@ -143,7 +153,9 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <input
                     type="password"
                     value={settings.openai_api_key || ''}
-                    onChange={(e) => handleChange('openai_api_key', e.currentTarget.value)}
+                    onChange={e =>
+                      handleChange('openai_api_key', e.currentTarget.value)
+                    }
                     placeholder="sk-..."
                     className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -156,10 +168,13 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                 type="checkbox"
                 id="voice"
                 checked={settings.voice}
-                onChange={(e) => handleChange('voice', e.currentTarget.checked)}
+                onChange={e => handleChange('voice', e.currentTarget.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
-              <label htmlFor="voice" className="ml-2 block text-sm text-gray-700">
+              <label
+                htmlFor="voice"
+                className="ml-2 block text-sm text-gray-700"
+              >
                 Enable Voice
               </label>
             </div>
@@ -169,10 +184,15 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                 type="checkbox"
                 id="streaming"
                 checked={settings.streaming}
-                onChange={(e) => handleChange('streaming', e.currentTarget.checked)}
+                onChange={e =>
+                  handleChange('streaming', e.currentTarget.checked)
+                }
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
-              <label htmlFor="streaming" className="ml-2 block text-sm text-gray-700">
+              <label
+                htmlFor="streaming"
+                className="ml-2 block text-sm text-gray-700"
+              >
                 Enable Streaming
               </label>
             </div>
