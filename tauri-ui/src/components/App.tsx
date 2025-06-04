@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
 import { BASE_URL, useChat } from '../context/ChatContext.tsx';
-import { Menu, FolderSearch, Package, ChevronLeft } from 'lucide-preact';
+import { Menu, FolderSearch, Package, ChevronLeft, Settings as SettingsIcon } from 'lucide-preact';
 import { ChatToolbar } from './ChatToolbar.tsx';
 import { ChatMessages } from './ChatMessages.tsx';
 import { FolderSelector } from './FolderSelector.tsx';
 import { ProjectMetadata } from './ProjectMetadata.tsx';
+import { Settings } from './Settings.tsx';
 
 export function App() {
   const {
@@ -29,6 +30,7 @@ export function App() {
   );
   const [projectPath, setProjectPath] = useState<string>('');
   const [folderSelectorOpen, setFolderSelectorOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   if (!apiReady) {
     return (
@@ -178,6 +180,16 @@ export function App() {
                 </span>
               </button>
             )}
+
+            <div className="flex items-center">
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="flex items-center gap-2 px-3 py-1 text-sm rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 transition"
+                title="Settings"
+              >
+                <SettingsIcon className="h-4 w-4 text-neutral-600" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -225,6 +237,11 @@ export function App() {
               onClose={() => setFolderSelectorOpen(false)}
             />
       )}
+
+      <Settings
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }

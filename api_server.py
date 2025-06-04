@@ -50,6 +50,14 @@ class QueryRequest(BaseModel):
     mode: str | None = None
     project_path: str | None = None
 
+class SettingsUpdate(BaseModel):
+    llm_backend: str | None = None
+    llm_model: str | None = None
+    openai_model: str | None = None
+    voice: bool | None = None
+    streaming: bool | None = None
+    openai_api_key: str | None = None
+
 @app.post("/query")
 def query(req: QueryRequest, _: str = Depends(verify_api_key)):
     profile = load_conversation(req.conversation_id)
@@ -239,6 +247,62 @@ def browse_folders(path: str = ""):
         "separator": os.sep,
         "recent_projects": recent_projects
     }
+
+@app.get("/settings")
+def get_settings():
+    """
+    Get the current settings and available LLM options.
+
+    Returns:
+        Dictionary containing the current settings and available LLM options
+    """
+    current_settings = load_settings()
+
+    # Define available LLM options
+    llm_options = {
+        "ollama": [
+            "llama3",
+            "llama2",
+            "mistral",
+            "codellama",
+            "phi",
+            "gemma"
+        ],
+        "openai": [
+            "gpt-3.5-turbo",
+            "gpt-4",
+            "gpt-4-turbo",
+            "gpt-4o"
+        ]
+    }
+
+    return {
+        "settings": current_settings,
+        "llm_options": llm_options
+    }
+
+@app.post("/settings")
+def update_settings(settings_update: SettingsUpdate):
+    """
+    Update the settings with the provided values.
+
+    Args:
+        settings_update: SettingsUpdate model containing the settings to update
+
+    Returns:
+        Dictionary containing the updated settings
+    """
+    current_settings = load_settings()
+
+    # Update the settings with the provided values
+    update_dict = settings_update.dict(exclude_unset=True, exclude_none=True)
+    for key, value in update_dict.items():
+        current_settings[key] = value
+
+    # Save the updated settings
+    save_settings(current_settings)
+
+    return {"settings": current_settings}
 
 def main():
     """Main entry point for the API server."""

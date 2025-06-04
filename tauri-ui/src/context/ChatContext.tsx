@@ -13,6 +13,21 @@ export type ChatMessage = {
   content: string;
 };
 
+export interface Settings {
+  llm_backend: string;
+  llm_model: string;
+  openai_model: string;
+  voice: boolean;
+  streaming: boolean;
+  openai_api_key: string;
+  [key: string]: any;
+}
+
+export interface LLMOptions {
+  ollama: string[];
+  openai: string[];
+}
+
 interface ChatState {
   conversationId: string;
   messages: ChatMessage[];
@@ -32,6 +47,8 @@ interface ChatState {
   transcribe: (blob: Blob) => Promise<string>;
   projectMetadata: ProjectMeta | null;
   setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
+  getSettings: () => Promise<{ settings: Settings; llm_options: LLMOptions }>;
+  updateSettings: (settings: Partial<Settings>) => Promise<{ settings: Settings }>;
 }
 
 export interface ConversationMeta {
@@ -207,6 +224,34 @@ export function ChatProvider({
     return data?.text as string || '';
   };
 
+  const getSettings = async () => {
+    const data = await fetchWithKey(
+      `${BASE_URL}/settings`,
+      apiKey,
+      setError
+    );
+    return {
+      settings: data?.settings as Settings,
+      llm_options: data?.llm_options as LLMOptions
+    };
+  };
+
+  const updateSettings = async (settings: Partial<Settings>) => {
+    const data = await fetchWithKey(
+      `${BASE_URL}/settings`,
+      apiKey,
+      setError,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+      }
+    );
+    return { settings: data?.settings as Settings };
+  };
+
   return (
     <ChatContext.Provider
       value={{
@@ -226,7 +271,10 @@ export function ChatProvider({
         sendStreamingMessage,
         transcribe,
         projectMetadata,
-        setProjectMetadata
+        setProjectMetadata,
+        transcribe,
+        getSettings,
+        updateSettings
       }}
     >
       {children}
