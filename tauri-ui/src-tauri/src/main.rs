@@ -2,6 +2,7 @@
 use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::env;
+use std::fs;
 
 fn resolve_python_path(project_root: &Path) -> PathBuf {
     let candidates = if cfg!(target_os = "windows") {
@@ -26,15 +27,39 @@ fn resolve_python_path(project_root: &Path) -> PathBuf {
     PathBuf::from("python")
 }
 
+fn install_requirements(python_path: &Path, project_root: &Path) -> std::io::Result<()> {
+    let requirements_path = project_root.join("../requirements.txt");
+    if requirements_path.exists() {
+        let status = Command::new(python_path)
+            .args(["-m", "pip", "install", "-r"])
+            .arg(&requirements_path)
+            .current_dir(project_root.join(".."))
+            .status()?;
+
+        if !status.success() {
+            eprintln!("Failed to install requirements.txt");
+        } else {
+            println!("requirements.txt installed successfully");
+        }
+    } else {
+        println!("requirements.txt not found, skipping installation");
+    }
+
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
     .setup(|_app| {
-        let cwd = env::current_dir().expect("❌ Couldn't get current dir");
-        let project_root = cwd.parent().expect("❌ Couldn't get project root");
+        let cwd = env::current_dir().expect("Couldn't get current dir");
+        let project_root = cwd.parent().expect("Couldn't get project root");
+
+        let python = resolve_python_path(project_root);
+
+        install_requirements(&python, project_root)?;
 
         let api_server_path = project_root.join("../api_server.py").canonicalize()
-            .expect("❌ Could not resolve api_server.py path");
-        let python = resolve_python_path(project_root);
+            .expect("Could not resolve api_server.py path");
 
         let child = Command::new(python)
             .arg(api_server_path)
@@ -44,7 +69,7 @@ fn main() {
         match child {
             Ok(_) => Ok(()),
             Err(e) => {
-              println!("❌ Failed to start Suhana backend: {e}");
+              println!("Failed to start Suhana backend: {e}");
               Err(e.into())
             }
           }

@@ -20,12 +20,10 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      loadSettings();
-    }
+    if (isOpen) void loadSettings();
   }, [isOpen]);
 
-  const loadSettings = async () => {
+  async function loadSettings() {
     setLoading(true);
     try {
       const { settings, llm_options } = await getSettings();
@@ -38,11 +36,10 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleSave = async () => {
+  async function handleSave() {
     if (!settings) return;
-
     setSaving(true);
     try {
       const result = await updateSettings(settings);
@@ -54,53 +51,68 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const handleChange = (key: keyof SettingsType, value: any) => {
+  function handleChange(key: keyof SettingsType, value: any) {
     if (!settings) return;
     setSettings({ ...settings, [key]: value });
-  };
+  }
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold flex items-center">
-            <SettingsIcon className="h-5 w-5 mr-2" /> Settings
-          </h2>
+    <div
+      className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="w-[90%] max-w-xl relative z-50 bg-white border border-gray-200 rounded-md shadow-md p-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-2">
+          <h3 className="font-semibold text-lg text-gray-800 flex items-center gap-2">
+            <SettingsIcon className="w-5 h-5" />
+            Settings{' '}
+            {loading && (
+              <span className="text-sm text-gray-400">Loading...</span>
+            )}
+          </h3>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="cursor-pointer text-gray-400 hover:text-black hover:bg-gray-100 rounded-md p-2 focus:outline-none transition"
+            title="Close"
             aria-label="Close"
           >
-            <X className="h-5 w-5" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {loading ? (
-          <div className="text-center py-4">Loading settings...</div>
-        ) : error ? (
-          <div className="text-red-500 py-2">{error}</div>
-        ) : settings && llmOptions ? (
+        {error && (
+          <div className="bg-red-50 text-red-700 p-3 rounded border border-red-200 text-sm mb-4">
+            {error}
+          </div>
+        )}
+
+        {!loading && settings && llmOptions && (
           <form
+            data-testid="settings-form"
             onSubmit={e => {
               e.preventDefault();
               void handleSave();
             }}
-            className="space-y-4"
+            className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto pr-1"
           >
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="llm-backend" className="block text-sm font-medium text-gray-700 mb-1">
                 LLM Backend
               </label>
               <select
+                id="llm-backend"
                 value={settings.llm_backend}
                 onChange={e =>
                   handleChange('llm_backend', e.currentTarget.value)
                 }
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
               >
                 <option value="ollama">Ollama</option>
                 <option value="openai">OpenAI</option>
@@ -109,15 +121,16 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
             {settings.llm_backend === 'ollama' ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="ollama-model" className="block text-sm font-medium text-gray-700 mb-1">
                   Ollama Model
                 </label>
                 <select
+                  id="ollama-model"
                   value={settings.llm_model}
                   onChange={e =>
                     handleChange('llm_model', e.currentTarget.value)
                   }
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
                   {llmOptions.ollama.map(model => (
                     <option key={model} value={model}>
@@ -129,15 +142,16 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="openai-model" className="block text-sm font-medium text-gray-700 mb-1">
                     OpenAI Model
                   </label>
                   <select
+                    id="openai-model"
                     value={settings.openai_model}
                     onChange={e =>
                       handleChange('openai_model', e.currentTarget.value)
                     }
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
                   >
                     {llmOptions.openai.map(model => (
                       <option key={model} value={model}>
@@ -146,40 +160,39 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     ))}
                   </select>
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="openai-api-key" className="block text-sm font-medium text-gray-700 mb-1">
                     OpenAI API Key
                   </label>
                   <input
+                    id="openai-api-key"
                     type="password"
                     value={settings.openai_api_key || ''}
                     onChange={e =>
                       handleChange('openai_api_key', e.currentTarget.value)
                     }
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
                     placeholder="sk-..."
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </>
             )}
 
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="voice"
                 checked={settings.voice}
                 onChange={e => handleChange('voice', e.currentTarget.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded"
               />
-              <label
-                htmlFor="voice"
-                className="ml-2 block text-sm text-gray-700"
-              >
+              <label htmlFor="voice" className="text-sm text-gray-700">
                 Enable Voice
               </label>
             </div>
 
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="streaming"
@@ -187,34 +200,32 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                 onChange={e =>
                   handleChange('streaming', e.currentTarget.checked)
                 }
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded"
               />
-              <label
-                htmlFor="streaming"
-                className="ml-2 block text-sm text-gray-700"
-              >
+              <label htmlFor="streaming" className="text-sm text-gray-700">
                 Enable Streaming
               </label>
             </div>
-
-            <div className="flex justify-end space-x-2 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
           </form>
-        ) : null}
+        )}
+
+        <div className="flex justify-between pt-4 mt-2 border-t border-gray-100">
+          <button
+            onClick={onClose}
+            type="button"
+            className="text-sm px-4 py-2 rounded border border-gray-200 text-gray-700 hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            onClick={handleSave}
+            disabled={saving || !settings}
+            className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-900 shadow-sm disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   );
