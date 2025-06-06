@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from engine.engine_config import load_settings
+from engine.engine_config import load_settings, save_settings
 from engine.agent_core import handle_input
 from engine.api_key_store import load_valid_api_keys
 from engine.di import container
@@ -304,10 +304,20 @@ def update_settings(settings_update: SettingsUpdate):
 
     return {"settings": current_settings}
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 def main():
     """Main entry point for the API server."""
     import uvicorn
-    uvicorn.run("api_server:app", host="127.0.0.1", port=8000, reload=False)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+
+    uvicorn.run("api_server:app", host="127.0.0.1", port=args.port, reload=False)
 
 if __name__ == "__main__":
     main()
