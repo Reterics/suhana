@@ -19,9 +19,13 @@ from engine.conversation_store import (
 )
 from engine.interfaces import VectorStoreManagerInterface
 from engine.utils import load_metadata
+from engine.user_manager import UserManager
 
 # Export the vectorstore_manager instance for direct imports
 vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
+
+# Create UserManager instance
+user_manager = UserManager()
 
 app = FastAPI()
 app.add_middleware(
@@ -57,6 +61,33 @@ class SettingsUpdate(BaseModel):
     voice: bool | None = None
     streaming: bool | None = None
     openai_api_key: str | None = None
+
+class ProfileUpdate(BaseModel):
+    name: str | None = None
+    avatar: str | None = None
+
+class PreferencesUpdate(BaseModel):
+    preferred_language: str | None = None
+    communication_style: str | None = None
+    focus: str | None = None
+    theme: str | None = None
+    font_size: str | None = None
+    notification_level: str | None = None
+    timezone: str | None = None
+    date_format: str | None = None
+    time_format: str | None = None
+
+class PersonalizationUpdate(BaseModel):
+    interests: list[str] | None = None
+    expertise: list[str] | None = None
+    learning_goals: list[str] | None = None
+    favorite_tools: list[str] | None = None
+    custom_shortcuts: dict[str, str] | None = None
+
+class PrivacyUpdate(BaseModel):
+    share_conversations: bool | None = None
+    allow_analytics: bool | None = None
+    store_history: bool | None = None
 
 @app.post("/query")
 def query(req: QueryRequest, _: str = Depends(verify_api_key)):
@@ -303,6 +334,175 @@ def update_settings(settings_update: SettingsUpdate):
     save_settings(current_settings)
 
     return {"settings": current_settings}
+
+@app.get("/profile/{user_id}")
+def get_profile(user_id: str, _: str = Depends(verify_api_key)):
+    """
+    Get a user's profile information.
+
+    Args:
+        user_id: User ID to get profile for
+
+    Returns:
+        Dictionary containing the user's profile information
+    """
+    profile = user_manager.get_profile(user_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
+
+    return {"profile": profile}
+
+@app.post("/profile/{user_id}")
+def update_profile(user_id: str, profile_update: ProfileUpdate, _: str = Depends(verify_api_key)):
+    """
+    Update a user's profile information.
+
+    Args:
+        user_id: User ID to update profile for
+        profile_update: ProfileUpdate model containing the profile updates
+
+    Returns:
+        Dictionary containing the updated profile information
+    """
+    profile = user_manager.get_profile(user_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
+
+    # Update only the specified fields
+    update_dict = profile_update.dict(exclude_unset=True, exclude_none=True)
+    for key, value in update_dict.items():
+        profile[key] = value
+
+    success = user_manager.save_profile(user_id, profile)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save profile")
+
+    return {"profile": profile}
+
+@app.get("/profile/{user_id}/preferences")
+def get_preferences(user_id: str, _: str = Depends(verify_api_key)):
+    """
+    Get a user's preferences.
+
+    Args:
+        user_id: User ID to get preferences for
+
+    Returns:
+        Dictionary containing the user's preferences
+    """
+    preferences = user_manager.get_preferences(user_id)
+    if not preferences:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
+
+    return {"preferences": preferences}
+
+@app.post("/profile/{user_id}/preferences")
+def update_preferences(user_id: str, preferences_update: PreferencesUpdate, _: str = Depends(verify_api_key)):
+    """
+    Update a user's preferences.
+
+    Args:
+        user_id: User ID to update preferences for
+        preferences_update: PreferencesUpdate model containing the preference updates
+
+    Returns:
+        Dictionary containing the updated preferences
+    """
+    # Update only the specified preferences
+    update_dict = preferences_update.dict(exclude_unset=True, exclude_none=True)
+    success = user_manager.update_preferences(user_id, update_dict)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update preferences")
+
+    return {"preferences": user_manager.get_preferences(user_id)}
+
+@app.get("/profile/{user_id}/personalization")
+def get_personalization(user_id: str, _: str = Depends(verify_api_key)):
+    """
+    Get a user's personalization settings.
+
+    Args:
+        user_id: User ID to get personalization settings for
+
+    Returns:
+        Dictionary containing the user's personalization settings
+    """
+    personalization = user_manager.get_personalization(user_id)
+    if not personalization:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
+
+    return {"personalization": personalization}
+
+@app.post("/profile/{user_id}/personalization")
+def update_personalization(user_id: str, personalization_update: PersonalizationUpdate, _: str = Depends(verify_api_key)):
+    """
+    Update a user's personalization settings.
+
+    Args:
+        user_id: User ID to update personalization settings for
+        personalization_update: PersonalizationUpdate model containing the personalization updates
+
+    Returns:
+        Dictionary containing the updated personalization settings
+    """
+    # Update only the specified personalization settings
+    update_dict = personalization_update.dict(exclude_unset=True, exclude_none=True)
+    success = user_manager.update_personalization(user_id, update_dict)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update personalization settings")
+
+    return {"personalization": user_manager.get_personalization(user_id)}
+
+@app.get("/profile/{user_id}/privacy")
+def get_privacy_settings(user_id: str, _: str = Depends(verify_api_key)):
+    """
+    Get a user's privacy settings.
+
+    Args:
+        user_id: User ID to get privacy settings for
+
+    Returns:
+        Dictionary containing the user's privacy settings
+    """
+    privacy_settings = user_manager.get_privacy_settings(user_id)
+    if not privacy_settings:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
+
+    return {"privacy": privacy_settings}
+
+@app.post("/profile/{user_id}/privacy")
+def update_privacy_settings(user_id: str, privacy_update: PrivacyUpdate, _: str = Depends(verify_api_key)):
+    """
+    Update a user's privacy settings.
+
+    Args:
+        user_id: User ID to update privacy settings for
+        privacy_update: PrivacyUpdate model containing the privacy setting updates
+
+    Returns:
+        Dictionary containing the updated privacy settings
+    """
+    # Update only the specified privacy settings
+    update_dict = privacy_update.dict(exclude_unset=True, exclude_none=True)
+    success = user_manager.update_privacy_settings(user_id, update_dict)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update privacy settings")
+
+    return {"privacy": user_manager.get_privacy_settings(user_id)}
+
+@app.get("/users")
+def list_users(_: str = Depends(verify_api_key)):
+    """
+    List all users in the system.
+
+    Returns:
+        List of dictionaries containing user information
+    """
+    users = user_manager.list_users()
+    return {"users": users}
 
 @app.get("/health")
 def health():
