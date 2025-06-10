@@ -49,6 +49,9 @@ class SQLiteAdapter(DatabaseAdapter):
         )
         self.logger = logging.getLogger(__name__)
 
+        # Apply access controls to enforce permissions
+        self.apply_access_controls()
+
     def connect(self) -> bool:
         """
         Connect to the SQLite database.
@@ -57,7 +60,7 @@ class SQLiteAdapter(DatabaseAdapter):
             bool: True if connection successful, False otherwise
         """
         try:
-            self.connection = sqlite3.connect(self.db_path)
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
             # Enable foreign keys
             self.connection.execute("PRAGMA foreign_keys = ON")
             # Use Row factory for better column access
@@ -163,6 +166,22 @@ class SQLiteAdapter(DatabaseAdapter):
             )
             ''')
 
+            # Create api_keys table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS api_keys (
+                key TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT,
+                created_at TEXT NOT NULL,
+                last_used TEXT,
+                usage_count INTEGER DEFAULT 0,
+                rate_limit INTEGER DEFAULT 60,
+                permissions TEXT,
+                active INTEGER DEFAULT 1,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            ''')
+
             # Create indexes
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_settings_user_id ON settings(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id)')
@@ -172,6 +191,8 @@ class SQLiteAdapter(DatabaseAdapter):
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_archived ON conversations(archived)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_facts_user_id ON memory_facts(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_facts_private ON memory_facts(private)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active)')
 
             self.connection.commit()
             return True
@@ -1219,3 +1240,254 @@ class SQLiteAdapter(DatabaseAdapter):
             self.logger.error(f"Error clearing memory: {e}")
             self.connection.rollback()
             return 0
+
+    # API Key Management Methods
+
+    def get_api_key(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get API key information.
+
+        Args:
+            key: API key
+
+        Returns:
+            Dict containing API key information or None if not found
+        """
+        try:
+            if not self.connection:
+                self.connect()
+
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT * FROM api_keys WHERE key = ?",
+                (key,)
+            )
+
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            # Convert row to dictionary
+            columns = [column[0] for column in cursor.description]
+            result = {columns[i]: row[i] for i in range(len(columns))}
+
+            # Convert permissions from JSON string to Python list
+            if result["permissions"] is not None:
+                result["permissions"] = json.loads(result["permissions"])
+
+            # Convert boolean fields
+            result["active"] = bool(result["active"])
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Error getting API key: {e}")
+            return None
+
+    def get_user_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all API keys for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of dictionaries containing API key information
+        """
+        try:
+            if not self.connection:
+                self.connect()
+
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT * FROM api_keys WHERE user_id = ?",
+                (user_id,)
+            )
+
+            rows = cursor.fetchall()
+
+            # Convert rows to dictionaries
+            columns = [column[0] for column in cursor.description]
+            result = []
+
+            for row in rows:
+                item = {columns[i]: row[i] for i in range(len(columns))}
+
+                # Convert permissions from JSON string to Python list
+                if item["permissions"] is not None:
+                    item["permissions"] = json.loads(item["permissions"])
+
+                # Convert boolean fields
+                item["active"] = bool(item["active"])
+
+                result.append(item)
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Error getting user API keys: {e}")
+            return []
+
+    def create_api_key(self, user_id: str, key: str, name: Optional[str] = None,
+                      rate_limit: int = 60, permissions: Optional[List[str]] = None) -> bool:
+        """
+        Create a new API key.
+
+        Args:
+            user_id: User ID
+            key: API key
+            name: Name for the API key
+            rate_limit: Rate limit in requests per minute
+            permissions: List of permissions
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not self.connection:
+                self.connect()
+
+            cursor = self.connection.cursor()
+
+            # Set default permissions if none provided
+            if permissions is None:
+                permissions = ["user"]
+
+            # Convert permissions list to JSON string
+            permissions_json = json.dumps(permissions)
+
+            cursor.execute(
+                """
+                INSERT INTO api_keys (key, user_id, name, created_at, rate_limit, permissions, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (key, user_id, name, datetime.now().isoformat(), rate_limit, permissions_json, 1)
+            )
+
+            self.connection.commit()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error creating API key: {e}")
+            self.connection.rollback()
+            return False
+
+    def update_api_key_usage(self, key: str) -> bool:
+        """
+        Update API key usage statistics.
+
+        Args:
+            key: API key
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not self.connection:
+                self.connect()
+
+            cursor = self.connection.cursor()
+
+            cursor.execute(
+                """
+                UPDATE api_keys
+                SET usage_count = usage_count + 1, last_used = ?
+                WHERE key = ?
+                """,
+                (datetime.now().isoformat(), key)
+            )
+
+            self.connection.commit()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error updating API key usage: {e}")
+            self.connection.rollback()
+            return False
+
+    def revoke_api_key(self, key: str) -> bool:
+        """
+        Revoke an API key.
+
+        Args:
+            key: API key
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not self.connection:
+                self.connect()
+
+            cursor = self.connection.cursor()
+
+            cursor.execute(
+                "UPDATE api_keys SET active = 0 WHERE key = ?",
+                (key,)
+            )
+
+            self.connection.commit()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error revoking API key: {e}")
+            self.connection.rollback()
+            return False
+
+    def get_api_key_usage_stats(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get API key usage statistics.
+
+        Args:
+            user_id: User ID (if None, gets stats for all users)
+
+        Returns:
+            List of dictionaries containing API key usage statistics
+        """
+        try:
+            if not self.connection:
+                self.connect()
+
+            cursor = self.connection.cursor()
+
+            if user_id:
+                cursor.execute(
+                    """
+                    SELECT k.key, k.name, k.user_id, k.created_at, k.last_used,
+                           k.usage_count, k.rate_limit, k.permissions, k.active,
+                           u.username
+                    FROM api_keys k
+                    JOIN users u ON k.user_id = u.id
+                    WHERE k.user_id = ?
+                    """,
+                    (user_id,)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT k.key, k.name, k.user_id, k.created_at, k.last_used,
+                           k.usage_count, k.rate_limit, k.permissions, k.active,
+                           u.username
+                    FROM api_keys k
+                    JOIN users u ON k.user_id = u.id
+                    """
+                )
+
+            rows = cursor.fetchall()
+
+            # Convert rows to dictionaries
+            columns = [column[0] for column in cursor.description]
+            result = []
+
+            for row in rows:
+                item = {columns[i]: row[i] for i in range(len(columns))}
+
+                # Convert permissions from JSON string to Python list
+                if item["permissions"] is not None:
+                    item["permissions"] = json.loads(item["permissions"])
+
+                # Convert boolean fields
+                item["active"] = bool(item["active"])
+
+                result.append(item)
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Error getting API key usage stats: {e}")
+            return []

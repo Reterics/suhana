@@ -5,8 +5,13 @@ This module defines the base interface for all database adapters.
 """
 
 import abc
-from typing import Dict, Any, List, Optional, Tuple
+import logging
+from typing import Dict, Any, List, Optional, Tuple, Type
 from pathlib import Path
+
+from engine.security.database_access import apply_database_access_controls
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseAdapter(abc.ABC):
@@ -16,6 +21,15 @@ class DatabaseAdapter(abc.ABC):
     All database adapters must implement these methods to provide
     consistent storage capabilities across different database backends.
     """
+
+    def apply_access_controls(self) -> None:
+        """
+        Apply access controls to the database adapter methods.
+
+        This method wraps the adapter methods with access control decorators
+        to enforce permission checks for all database operations.
+        """
+        apply_database_access_controls(self)
 
     @abc.abstractmethod
     def __init__(self, connection_string: str, **kwargs):
@@ -356,5 +370,90 @@ class DatabaseAdapter(abc.ABC):
 
         Returns:
             int: Number of memory facts cleared
+        """
+        pass
+
+    # API Key Management
+
+    @abc.abstractmethod
+    def get_api_key(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get API key information.
+
+        Args:
+            key: API key
+
+        Returns:
+            Dict containing API key information or None if not found
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_user_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all API keys for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of dictionaries containing API key information
+        """
+        pass
+
+    @abc.abstractmethod
+    def create_api_key(self, user_id: str, key: str, name: Optional[str] = None,
+                      rate_limit: int = 60, permissions: Optional[List[str]] = None) -> bool:
+        """
+        Create a new API key.
+
+        Args:
+            user_id: User ID
+            key: API key
+            name: Name for the API key
+            rate_limit: Rate limit in requests per minute
+            permissions: List of permissions
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        pass
+
+    @abc.abstractmethod
+    def update_api_key_usage(self, key: str) -> bool:
+        """
+        Update API key usage statistics.
+
+        Args:
+            key: API key
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        pass
+
+    @abc.abstractmethod
+    def revoke_api_key(self, key: str) -> bool:
+        """
+        Revoke an API key.
+
+        Args:
+            key: API key
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_api_key_usage_stats(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get API key usage statistics.
+
+        Args:
+            user_id: User ID (if None, gets stats for all users)
+
+        Returns:
+            List of dictionaries containing API key usage statistics
         """
         pass

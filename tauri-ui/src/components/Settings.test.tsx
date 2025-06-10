@@ -1,7 +1,7 @@
-import {render, screen, fireEvent, waitFor} from '@testing-library/preact';
-import {describe, it, vi, expect, beforeEach} from 'vitest';
-import {Settings} from './Settings';
-import {useChat} from '../context/ChatContext';
+import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
+import { describe, it, vi, expect, beforeEach } from 'vitest';
+import { Settings } from './Settings';
+import { useChat } from '../context/ChatContext';
 
 vi.mock('../context/ChatContext', async () => {
   const actual = await vi.importActual('../context/ChatContext');
@@ -42,7 +42,7 @@ describe('Settings Component - Full Coverage', () => {
       llm_options: llmOptions
     });
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
     expect(await screen.findByLabelText('LLM Backend')).toBeInTheDocument();
     expect(screen.getByLabelText('Ollama Model')).toBeInTheDocument();
     expect(screen.getByLabelText('Enable Voice')).toBeChecked();
@@ -51,11 +51,11 @@ describe('Settings Component - Full Coverage', () => {
 
   it('switches to openai and shows correct UI', async () => {
     mockGetSettings.mockResolvedValueOnce({
-      settings: {...baseSettings, llm_backend: 'openai'},
+      settings: { ...baseSettings, llm_backend: 'openai' },
       llm_options: llmOptions
     });
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
     expect(await screen.findByLabelText('LLM Backend')).toHaveValue('openai');
     expect(screen.getByLabelText('OpenAI Model')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('sk-...')).toHaveValue('sk-test');
@@ -67,7 +67,7 @@ describe('Settings Component - Full Coverage', () => {
       llm_options: llmOptions
     });
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
     const voiceCheckbox = await screen.findByLabelText('Enable Voice');
     const streamCheckbox = screen.getByLabelText('Enable Streaming');
 
@@ -87,8 +87,8 @@ describe('Settings Component - Full Coverage', () => {
       settings: baseSettings
     });
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
-    const saveBtn = await screen.findByRole('button', {name: 'Save'});
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
+    const saveBtn = await screen.findByRole('button', { name: 'Save' });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
@@ -99,8 +99,10 @@ describe('Settings Component - Full Coverage', () => {
   it('shows error if settings load fails', async () => {
     mockGetSettings.mockRejectedValueOnce(new Error('Load failed'));
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
-    expect(await screen.findByText(/failed to load settings/i)).toBeInTheDocument();
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
+    expect(
+      await screen.findByText(/failed to load settings/i)
+    ).toBeInTheDocument();
   });
 
   it('shows error if save fails', async () => {
@@ -110,11 +112,13 @@ describe('Settings Component - Full Coverage', () => {
     });
     mockUpdateSettings.mockRejectedValueOnce(new Error('Save failed'));
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
-    const saveBtn = await screen.findByRole('button', {name: 'Save'});
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
+    const saveBtn = await screen.findByRole('button', { name: 'Save' });
     fireEvent.click(saveBtn);
 
-    expect(await screen.findByText(/failed to save settings/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/failed to save settings/i)
+    ).toBeInTheDocument();
   });
 
   it('calls onClose on cancel', async () => {
@@ -124,14 +128,14 @@ describe('Settings Component - Full Coverage', () => {
       llm_options: llmOptions
     });
 
-    render(<Settings isOpen={true} onClose={onClose}/>);
-    const cancelBtn = await screen.findByRole('button', {name: 'Cancel'});
+    render(<Settings isOpen={true} onClose={onClose} />);
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel' });
     fireEvent.click(cancelBtn);
     expect(onClose).toHaveBeenCalled();
   });
 
   it('renders nothing when isOpen is false', () => {
-    const {container} = render(<Settings isOpen={false} onClose={vi.fn()}/>);
+    const { container } = render(<Settings isOpen={false} onClose={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -142,10 +146,12 @@ describe('Settings Component - Full Coverage', () => {
     });
     mockUpdateSettings.mockRejectedValueOnce(new Error('Save failed'));
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
-    fireEvent.click(await screen.findByRole('button', {name: 'Save'}));
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByText(/failed to save settings/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/failed to save settings/i)
+    ).toBeInTheDocument();
   });
 
   it('submits form via fireEvent.submit()', async () => {
@@ -175,7 +181,7 @@ describe('Settings Component - Full Coverage', () => {
       }
     });
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
 
     await screen.findByLabelText('LLM Backend');
 
@@ -188,11 +194,13 @@ describe('Settings Component - Full Coverage', () => {
 
   it('does not crash if handleSave called with no settings', async () => {
     (useChat as any).mockReturnValueOnce({
-      getSettings: vi.fn().mockResolvedValue({settings: null, llm_options: null}),
+      getSettings: vi
+        .fn()
+        .mockResolvedValue({ settings: null, llm_options: null }),
       updateSettings: vi.fn()
     });
 
-    render(<Settings isOpen={true} onClose={vi.fn()}/>);
+    render(<Settings isOpen={true} onClose={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 });

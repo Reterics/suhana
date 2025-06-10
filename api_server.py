@@ -2,8 +2,10 @@ import tempfile
 from pathlib import Path
 
 import os
+from typing import List
+
 import whisper
-from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile
+from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,10 +43,36 @@ app.mount("/assets", StaticFiles(directory=asset_path), name="assets")
 settings = load_settings()
 model = whisper.load_model("base")
 
-def verify_api_key(x_api_key: str = Header(...)):
-    valid_keys = load_valid_api_keys()
-    if x_api_key not in valid_keys:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+def verify_api_key(x_api_key: str = Header(...), request: Request = None):
+    """
+    Verify the API key and extract the associated user ID.
+
+    Args:
+        x_api_key: API key from the request header
+        request: FastAPI request object (for endpoint tracking)
+
+    Returns:
+        str: User ID associated with the API key
+
+    Raises:
+        HTTPException: If the API key is invalid or rate limit is exceeded
+    """
+    from engine.api_key_store import get_api_key_manager
+
+    # Get the endpoint path for tracking
+    endpoint = request.url.path if request else None
+
+    # Validate the API key
+    api_key_manager = get_api_key_manager()
+    is_valid, user_id, error_message = api_key_manager.validate_key(x_api_key, endpoint)
+
+    if not is_valid:
+        if error_message == "Rate limit exceeded":
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        else:
+            raise HTTPException(status_code=401, detail=error_message or "Invalid API Key")
+
+    return user_id
 
 
 class QueryRequest(BaseModel):
@@ -89,9 +117,33 @@ class PrivacyUpdate(BaseModel):
     allow_analytics: bool | None = None
     store_history: bool | None = None
 
+class UserRegistration(BaseModel):
+    username: str
+    password: str
+    name: str | None = None
+    role: str = "user"
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
 @app.post("/query")
-def query(req: QueryRequest, _: str = Depends(verify_api_key)):
+def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
     profile = load_conversation(req.conversation_id)
+
+    # Check if the conversation exists and belongs to the user
+    if not profile:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Add or verify user context in the conversation
+    if "user_id" not in profile:
+        profile["user_id"] = user_id
+    elif profile["user_id"] != user_id:
+        # Check if user has permission to access other users' conversations
+        from engine.security.access_control import Permission, check_permission
+        if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, profile["user_id"]):
+            raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+
     reply = handle_input(req.input, req.backend, profile, settings)
     save_conversation(req.conversation_id, profile)
     return {"response": reply}
@@ -109,28 +161,165 @@ async def transcribe(audio: UploadFile = File(...)):
     return {"text": result["text"]}
 
 @app.post("/query/stream")
-def query_stream(req: QueryRequest, _: str = Depends(verify_api_key)):
+def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
     profile = load_conversation(req.conversation_id)
+
+    # Check if the conversation exists and belongs to the user
+    if not profile:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Add or verify user context in the conversation
+    if "user_id" not in profile:
+        profile["user_id"] = user_id
+    elif profile["user_id"] != user_id:
+        # Check if user has permission to access other users' conversations
+        from engine.security.access_control import Permission, check_permission
+        if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, profile["user_id"]):
+            raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+
     generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
     save_conversation(req.conversation_id, profile)
     return StreamingResponse(generator, media_type="text/plain")
 
 @app.get("/conversations")
-def get_conversations():
-    return list_conversation_meta()
+def get_conversations(user_id: str = Depends(verify_api_key)):
+    """
+    Get a list of conversations for the current user.
+
+    Args:
+        user_id: User ID from the API key
+
+    Returns:
+        List of conversation metadata
+    """
+    from engine.security.access_control import Permission, check_permission
+    from engine.conversation_store import ConversationStore
+
+    # Create conversation store
+    conversation_store = ConversationStore()
+
+    # Check if user has permission to view all conversations
+    if check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS):
+        # Get all conversations from all users
+        all_conversations = []
+
+        # Get list of all users
+        from engine.user_manager import UserManager
+        user_manager = UserManager()
+        users = user_manager.list_users()
+
+        # Get conversations for each user
+        for user in users:
+            user_conversations = conversation_store.list_conversation_meta(user["id"])
+            for conv in user_conversations:
+                conv["user_id"] = user["id"]
+                conv["user_name"] = user.get("name", user["id"])
+            all_conversations.extend(user_conversations)
+
+        # Also get legacy conversations (not associated with a user)
+        legacy_conversations = conversation_store.list_conversation_meta()
+        all_conversations.extend(legacy_conversations)
+
+        return all_conversations
+    else:
+        # Get only the user's conversations
+        user_conversations = conversation_store.list_conversation_meta(user_id)
+
+        # Also get legacy conversations if they don't have a user_id
+        legacy_conversations = conversation_store.list_conversation_meta()
+        for conv in legacy_conversations:
+            if "user_id" not in conv:
+                user_conversations.append(conv)
+
+        return user_conversations
 
 @app.get("/conversations/{conversation_id}")
-def get_conversation(conversation_id: str):
-    profile = load_conversation(conversation_id)
-    if profile is not None and "project_path" in profile:
+def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key)):
+    """
+    Get a specific conversation.
+
+    Args:
+        conversation_id: ID of the conversation to get
+        user_id: User ID from the API key
+
+    Returns:
+        Conversation data
+    """
+    from engine.security.access_control import Permission, check_permission
+    from engine.conversation_store import ConversationStore
+
+    # Create conversation store
+    conversation_store = ConversationStore()
+
+    # Try to load the conversation from the user's storage first
+    profile = conversation_store.load_conversation(conversation_id, user_id)
+
+    # If not found, try legacy storage
+    if not profile or not profile.get("history"):
+        legacy_profile = conversation_store.load_conversation(conversation_id)
+
+        # If found in legacy storage, check if it has a user_id
+        if legacy_profile and legacy_profile.get("history"):
+            if "user_id" in legacy_profile and legacy_profile["user_id"] != user_id:
+                # Check if user has permission to view other users' conversations
+                if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, legacy_profile["user_id"]):
+                    raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+
+            profile = legacy_profile
+
+    if not profile or not profile.get("history"):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Add project metadata if available
+    if "project_path" in profile:
         profile["project_metadata"] = load_metadata(profile["project_path"])
+
     return profile
 
 
 @app.post("/conversations/{conversation_id}")
-def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(verify_api_key)):
-    profile = load_conversation(req.conversation_id)
+def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = Depends(verify_api_key)):
+    """
+    Update a conversation's properties.
 
+    Args:
+        conversation_id: ID of the conversation to update
+        req: Request containing the updates
+        user_id: User ID from the API key
+
+    Returns:
+        Updated conversation data
+    """
+    from engine.security.access_control import Permission, check_permission
+    from engine.conversation_store import ConversationStore
+
+    # Create conversation store
+    conversation_store = ConversationStore()
+
+    # Try to load the conversation from the user's storage first
+    profile = conversation_store.load_conversation(conversation_id, user_id)
+
+    # If not found, try legacy storage
+    if not profile or not profile.get("history"):
+        legacy_profile = conversation_store.load_conversation(conversation_id)
+
+        # If found in legacy storage, check if it has a user_id
+        if legacy_profile and legacy_profile.get("history"):
+            if "user_id" in legacy_profile and legacy_profile["user_id"] != user_id:
+                # Check if user has permission to edit other users' conversations
+                if not check_permission(user_id, Permission.EDIT_ALL_CONVERSATIONS, legacy_profile["user_id"]):
+                    raise HTTPException(status_code=403, detail="You don't have permission to modify this conversation")
+
+            profile = legacy_profile
+
+    if not profile or not profile.get("history"):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Add or verify user context in the conversation
+    if "user_id" not in profile:
+        profile["user_id"] = user_id
+
+    # Update conversation properties
     if req.mode:
         profile["mode"] = req.mode
     if req.project_path:
@@ -166,21 +355,40 @@ def post_conversation(conversation_id: str, req: QueryRequest, _: str = Depends(
             pass
 
     # Get project metadata if available
-    if profile is not None and "project_path" in profile:
+    if "project_path" in profile:
         profile["project_metadata"] = load_metadata(profile["project_path"])
 
-    save_conversation(conversation_id, profile)
+    # Save the conversation with user context
+    conversation_store.save_conversation(conversation_id, profile, user_id)
 
     return {
         "conversation_id": conversation_id,
+        "user_id": profile["user_id"],
         "mode": profile["mode"],
-        "project_path": profile["project_path"],
-        "project_metadata": profile["project_metadata"]
+        "project_path": profile.get("project_path"),
+        "project_metadata": profile.get("project_metadata", {})
     }
 
 @app.post("/conversations/new")
-def new_conversation():
-    return {"conversation_id": create_new_conversation()}
+def new_conversation(user_id: str = Depends(verify_api_key)):
+    """
+    Create a new conversation for the current user.
+
+    Args:
+        user_id: User ID from the API key
+
+    Returns:
+        Dictionary containing the new conversation ID
+    """
+    from engine.conversation_store import ConversationStore
+
+    # Create conversation store
+    conversation_store = ConversationStore()
+
+    # Create new conversation with user context
+    conversation_id = conversation_store.create_new_conversation(user_id)
+
+    return {"conversation_id": conversation_id, "user_id": user_id}
 
 @app.get("/health")
 def health():
@@ -494,19 +702,263 @@ def update_privacy_settings(user_id: str, privacy_update: PrivacyUpdate, _: str 
     return {"privacy": user_manager.get_privacy_settings(user_id)}
 
 @app.get("/users")
-def list_users(_: str = Depends(verify_api_key)):
+def list_users(user_id: str = Depends(verify_api_key)):
     """
     List all users in the system.
+
+    Args:
+        user_id: User ID from the API key
 
     Returns:
         List of dictionaries containing user information
     """
+    from engine.security.access_control import Permission, check_permission
+
+    # Check if user has permission to view users
+    if not check_permission(user_id, Permission.VIEW_USERS):
+        raise HTTPException(status_code=403, detail="You don't have permission to view users")
+
     users = user_manager.list_users()
     return {"users": users}
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# API Key Management Endpoints
+
+class ApiKeyCreate(BaseModel):
+    name: str = None
+    rate_limit: int = None
+    permissions: List[str] = None
+
+@app.get("/api-keys")
+def list_api_keys(user_id: str = Depends(verify_api_key), request: Request = None):
+    """
+    List API keys for the current user.
+
+    Args:
+        user_id: User ID from the API key
+        request: FastAPI request object
+
+    Returns:
+        List of API keys for the user
+    """
+    from engine.api_key_store import get_api_key_manager
+    from engine.security.access_control import Permission, check_permission
+
+    api_key_manager = get_api_key_manager()
+
+    # Check if user has permission to view all API keys
+    if check_permission(user_id, Permission.MANAGE_USERS):
+        # Admin can request keys for any user
+        requested_user = request.query_params.get("user_id", user_id) if request else user_id
+        keys = api_key_manager.get_user_keys(requested_user)
+        return {"keys": keys, "user_id": requested_user}
+    else:
+        # Regular users can only view their own keys
+        keys = api_key_manager.get_user_keys(user_id)
+
+        # Remove the actual key value for security
+        for key in keys:
+            if "key" in key:
+                key["key"] = key["key"][:8] + "..." + key["key"][-4:]
+
+        return {"keys": keys, "user_id": user_id}
+
+@app.post("/api-keys")
+def create_api_key(key_data: ApiKeyCreate, user_id: str = Depends(verify_api_key)):
+    """
+    Create a new API key for the current user.
+
+    Args:
+        key_data: API key creation parameters
+        user_id: User ID from the API key
+
+    Returns:
+        The newly created API key
+    """
+    from engine.api_key_store import get_api_key_manager, DEFAULT_RATE_LIMIT
+    from engine.security.access_control import Permission, check_permission
+
+    api_key_manager = get_api_key_manager()
+
+    # Check if user has permission to create API keys
+    if not check_permission(user_id, Permission.MANAGE_USERS):
+        # Regular users can only create keys with default permissions
+        permissions = ["user"]
+        rate_limit = min(key_data.rate_limit or DEFAULT_RATE_LIMIT, DEFAULT_RATE_LIMIT)
+    else:
+        # Admins can create keys with custom permissions and rate limits
+        permissions = key_data.permissions or ["user"]
+        rate_limit = key_data.rate_limit or DEFAULT_RATE_LIMIT
+
+    # Create the API key
+    new_key = api_key_manager.create_api_key(
+        user_id=user_id,
+        name=key_data.name,
+        rate_limit=rate_limit,
+        permissions=permissions
+    )
+
+    return {
+        "key": new_key,
+        "name": key_data.name,
+        "user_id": user_id,
+        "rate_limit": rate_limit,
+        "permissions": permissions
+    }
+
+@app.delete("/api-keys/{key}")
+def revoke_api_key(key: str, user_id: str = Depends(verify_api_key)):
+    """
+    Revoke an API key.
+
+    Args:
+        key: The API key to revoke
+        user_id: User ID from the API key
+
+    Returns:
+        Success status
+    """
+    from engine.api_key_store import get_api_key_manager
+    from engine.security.access_control import Permission, check_permission
+
+    api_key_manager = get_api_key_manager()
+
+    # Get key info
+    key_info = api_key_manager.get_key_info(key)
+
+    if not key_info:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    # Check if user has permission to revoke this key
+    if key_info["user_id"] != user_id and not check_permission(user_id, Permission.MANAGE_USERS):
+        raise HTTPException(status_code=403, detail="You don't have permission to revoke this API key")
+
+    # Revoke the key
+    success = api_key_manager.revoke_api_key(key)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to revoke API key")
+
+    return {"status": "success", "message": "API key revoked"}
+
+@app.get("/api-keys/usage")
+def get_api_key_usage(user_id: str = Depends(verify_api_key)):
+    """
+    Get API key usage statistics.
+
+    Args:
+        user_id: User ID from the API key
+
+    Returns:
+        API key usage statistics
+    """
+    from engine.api_key_store import get_api_key_manager
+    from engine.security.access_control import Permission, check_permission
+
+    api_key_manager = get_api_key_manager()
+
+    # Check if user has permission to view all usage stats
+    if check_permission(user_id, Permission.MANAGE_USERS):
+        # Admin can view all usage stats
+        stats = api_key_manager.get_usage_stats()
+        return {"stats": stats}
+    else:
+        # Regular users can only view their own usage stats
+        stats = api_key_manager.get_usage_stats(user_id=user_id)
+        return {"stats": stats}
+
+@app.post("/register")
+def register_user(user_data: UserRegistration):
+    """
+    Register a new user and create an initial API key.
+
+    Args:
+        user_data: User registration data
+
+    Returns:
+        Dictionary containing the new user ID and API key
+    """
+    # Create the user
+    success, message = user_manager.create_user(
+        username=user_data.username,
+        password=user_data.password,
+        name=user_data.name,
+        role=user_data.role
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Create an initial API key for the user
+    from engine.api_key_store import get_api_key_manager, DEFAULT_RATE_LIMIT
+
+    api_key_manager = get_api_key_manager()
+
+    # Create the API key
+    new_key = api_key_manager.create_api_key(
+        user_id=user_data.username,
+        name="Initial API Key",
+        rate_limit=DEFAULT_RATE_LIMIT,
+        permissions=["user"]
+    )
+
+    return {
+        "user_id": user_data.username,
+        "message": message,
+        "api_key": new_key
+    }
+
+@app.post("/login")
+def login_user(user_data: UserLogin):
+    """
+    Authenticate a user and return an API key.
+
+    Args:
+        user_data: User login data
+
+    Returns:
+        Dictionary containing the user ID and API key
+    """
+    # Authenticate the user
+    success, token = user_manager.authenticate(
+        username=user_data.username,
+        password=user_data.password
+    )
+
+    if not success:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # Get or create an API key for the user
+    from engine.api_key_store import get_api_key_manager, DEFAULT_RATE_LIMIT
+
+    api_key_manager = get_api_key_manager()
+
+    # Check if user already has an API key
+    user_keys = api_key_manager.get_user_keys(user_data.username)
+
+    if user_keys:
+        # Use the first existing key
+        api_key = user_keys[0]["key"]
+    else:
+        # Create a new API key
+        api_key = api_key_manager.create_api_key(
+            user_id=user_data.username,
+            name="Login API Key",
+            rate_limit=DEFAULT_RATE_LIMIT,
+            permissions=["user"]
+        )
+
+    # Get user profile
+    profile = user_manager.get_profile(user_data.username)
+
+    return {
+        "user_id": user_data.username,
+        "api_key": api_key,
+        "profile": profile
+    }
 
 def main():
     """Main entry point for the API server."""

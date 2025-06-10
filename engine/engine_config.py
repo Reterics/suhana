@@ -2,8 +2,9 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
+from engine.database.base import DatabaseAdapter
 from engine.logging_config import configure_logging, get_log_config, set_log_level
 
 load_dotenv()
@@ -74,3 +75,44 @@ def switch_backend(new_backend, settings):
     else:
         print("❌ Supported engines: ollama, openai, gemini, claude")
     return new_backend
+
+def get_database_adapter() -> DatabaseAdapter:
+    """
+    Get a database adapter based on the current settings.
+
+    Returns:
+        DatabaseAdapter: An initialized database adapter
+    """
+    settings = load_settings()
+    db_type = settings.get("database", {}).get("type", "sqlite")
+
+    if db_type.lower() == "postgres":
+        from engine.database.postgres import PostgresAdapter
+
+        # Get connection parameters from settings
+        db_config = settings.get("database", {}).get("postgres", {})
+        connection_string = db_config.get("connection_string", "")
+
+        # If no connection string is provided, build one from individual parameters
+        if not connection_string:
+            host = db_config.get("host", "localhost")
+            port = db_config.get("port", 5432)
+            database = db_config.get("database", "suhana")
+            user = db_config.get("user", "postgres")
+            password = db_config.get("password", "")
+
+            connection_string = f"host={host} port={port} dbname={database} user={user} password={password}"
+
+        return PostgresAdapter(connection_string)
+    else:
+        # Default to SQLite
+        from engine.database.sqlite import SQLiteAdapter
+
+        # Get database file path from settings or use default
+        db_path = settings.get("database", {}).get("sqlite", {}).get("path", "suhana.db")
+
+        # Ensure path is absolute
+        if not os.path.isabs(db_path):
+            db_path = os.path.join(os.path.dirname(SETTINGS_PATH), db_path)
+
+        return SQLiteAdapter(db_path)

@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { useChat } from '../context/ChatContext';
+import { X } from 'lucide-preact';
 
 interface RegisterProps {
   onClose: () => void;
@@ -18,40 +19,22 @@ export function Register({ onClose, onSwitchToLogin }: RegisterProps) {
   const handleRegister = async (e: Event) => {
     e.preventDefault();
     setError('');
-
-    // Validate passwords match
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
-
     setIsLoading(true);
-
     try {
       const response = await fetch('http://localhost:8000/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          username,
-          password,
-          name: name || username
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, name: name || username })
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Registration failed');
-      }
-
+      if (!response.ok)
+        throw new Error((await response.text()) || 'Registration failed');
       const data = await response.json();
-
-      // Set the API key and current user in the context
       setApiKey(data.api_key);
       setCurrentUser(data.user_id);
-
-      // Close the register modal
       onClose();
     } catch (err) {
       setError(`Registration failed: ${(err as Error).message}`);
@@ -61,102 +44,121 @@ export function Register({ onClose, onSwitchToLogin }: RegisterProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-4">Register</h2>
+    <div
+      className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="w-[90%] max-w-md relative z-50 bg-white border border-gray-200 rounded-md shadow-md p-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-4">
+          <h3 className="text-lg font-semibold text-gray-800">Register</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-black hover:bg-gray-100 p-2 rounded"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="bg-red-50 text-red-700 p-3 rounded border border-red-200 text-sm mb-4">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleRegister}>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
+        <form onSubmit={handleRegister} className="flex flex-col gap-4">
+          <div>
+            <label
+              htmlFor="username"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Username
             </label>
             <input
               id="username"
               type="text"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
               value={username}
-              onChange={(e) => setUsername(e.currentTarget.value)}
+              onInput={e => setUsername((e.target as HTMLInputElement).value)}
               required
             />
-            <p className="text-gray-500 text-xs mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               Username must contain only letters, numbers, and underscores
             </p>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="name">
+          <div>
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Display Name (optional)
             </label>
             <input
               id="name"
               type="text"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
               value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
+              onInput={e => setName((e.target as HTMLInputElement).value)}
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Password
             </label>
             <input
               id="password"
               type="password"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
               value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
+              onInput={e => setPassword((e.target as HTMLInputElement).value)}
               required
             />
           </div>
 
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">
+          <div>
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Confirm Password
             </label>
             <input
               id="confirmPassword"
               type="password"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+              onInput={e =>
+                setConfirmPassword((e.target as HTMLInputElement).value)
+              }
               required
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              className="text-sm text-gray-600 hover:text-black"
+              onClick={onSwitchToLogin}
+            >
+              Back to Login
+            </button>
             <button
               type="submit"
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
               disabled={isLoading}
+              className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-900 shadow-sm disabled:opacity-50"
             >
               {isLoading ? 'Registering...' : 'Register'}
             </button>
-
-            <button
-              type="button"
-              className="text-blue-500 hover:text-blue-700 text-sm"
-              onClick={onSwitchToLogin}
-            >
-              Already have an account? Login
-            </button>
           </div>
         </form>
-
-        <div className="mt-4 text-right">
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-sm"
-          >
-            Cancel
-          </button>
-        </div>
       </div>
     </div>
   );
