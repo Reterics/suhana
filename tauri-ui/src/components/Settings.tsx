@@ -19,8 +19,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const {
     getSettings,
     updateSettings,
-    currentUser,
-    setCurrentUser,
+    userSession,
+    login,
     getUsers,
     getProfile,
     updateProfile,
@@ -68,11 +68,11 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     if (isOpen) {
       void loadSettings();
       void loadUsers();
-      if (currentUser) {
-        void loadProfileData(currentUser);
+      if (userSession?.userId) {
+        void loadProfileData(userSession.userId);
       }
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, userSession]);
 
   async function loadSettings() {
     setLoading(true);
@@ -95,8 +95,9 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
       setUsers(usersList);
 
       // If no current user is selected and users exist, select the first one
-      if (!currentUser && usersList.length > 0) {
-        setCurrentUser(usersList[0].user_id);
+      if (!userSession?.userId && usersList.length > 0) {
+        // Create a new session with the first user
+        login(usersList[0].user_id, userSession?.apiKey || '');
       }
     } catch (err) {
       console.error('Failed to load users', err);
@@ -130,23 +131,25 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
         const result = await updateSettings(settings);
         setSettings(result.settings);
         setError(null);
-      } else if (activeTab === 'profile' && currentUser && profile) {
+      } else if (activeTab === 'profile' && userSession?.userId && profile) {
+        const userId = userSession.userId;
+
         // Save profile changes
-        await updateProfile(currentUser, { name: profile.name });
+        await updateProfile(userId, { name: profile.name });
 
         // Save preferences if changed
         if (preferences) {
-          await updatePreferences(currentUser, preferences);
+          await updatePreferences(userId, preferences);
         }
 
         // Save personalization if changed
         if (personalization) {
-          await updatePersonalization(currentUser, personalization);
+          await updatePersonalization(userId, personalization);
         }
 
         // Save privacy settings if changed
         if (privacy) {
-          await updatePrivacySettings(currentUser, privacy);
+          await updatePrivacySettings(userId, privacy);
         }
 
         setError(null);
@@ -167,7 +170,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   }
 
   if (!isOpen) return null;
-  console.error(currentUser, profile, preferences, personalization, privacy);
+  console.error(userSession?.userId, profile, preferences, personalization, privacy);
   return (
     <div
       className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center"
@@ -371,7 +374,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             )}
 
             {activeTab === 'profile' &&
-              currentUser &&
+              userSession?.userId &&
               profile &&
               preferences &&
               personalization &&
@@ -389,10 +392,10 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     </label>
                     <select
                       id="user-select"
-                      value={currentUser}
+                      value={userSession?.userId || ''}
                       onChange={e => {
                         const newUserId = e.currentTarget.value;
-                        setCurrentUser(newUserId);
+                        login(newUserId, userSession?.apiKey || '');
                       }}
                       className="w-full border border-gray-300 rounded-md px-3 py-2"
                     >

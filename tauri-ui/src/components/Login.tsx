@@ -8,7 +8,7 @@ interface LoginProps {
 }
 
 export function Login({ onClose, onSwitchToRegister }: LoginProps) {
-  const { setApiKey, setCurrentUser } = useChat();
+  const { login } = useChat();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -27,8 +27,8 @@ export function Login({ onClose, onSwitchToRegister }: LoginProps) {
       if (!response.ok)
         throw new Error((await response.text()) || 'Login failed');
       const data = await response.json();
-      setApiKey(data.api_key);
-      setCurrentUser(data.user_id);
+      // Use the new login method to create a user session
+      login(data.user_id, data.api_key);
       onClose();
     } catch (err) {
       setError(`Login failed: ${(err as Error).message}`);

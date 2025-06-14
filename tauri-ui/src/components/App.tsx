@@ -32,9 +32,8 @@ export function App() {
     sendStreamingMessage,
     projectMetadata,
     setProjectMetadata,
-    currentUser,
-    setCurrentUser,
-    setApiKey
+    isAuthenticated,
+    logout
   } = useChat();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -49,9 +48,7 @@ export function App() {
   const [authModalView, setAuthModalView] = useState<'login' | 'register'>(
     'login'
   );
-
-  const isLoggedIn = !!currentUser;
-
+console.error(apiReady, isAuthenticated)
   if (!apiReady) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-gray-400 text-xl">
@@ -133,7 +130,7 @@ export function App() {
   //
   return (
     <div className="flex h-screen w-screen bg-neutral-50 text-gray-800">
-      {isLoggedIn && (
+      {isAuthenticated && (
         <Sidebar
           conversations={conversationList}
           onSelectConversation={loadConversation}
@@ -143,7 +140,7 @@ export function App() {
       )}
       <main className="flex-1 flex flex-col h-full">
         <div className="flex items-center flex-wrap justify-between gap-1 px-4 py-2 border-b bg-white shadow-sm text-sm">
-          {isLoggedIn && (
+          {isAuthenticated && (
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="text-gray-500 hover:text-black transition"
@@ -152,7 +149,7 @@ export function App() {
               <Menu className="h-5 w-5" />
             </button>
           )}
-          {!isLoggedIn && (
+          {!isAuthenticated && (
             <div className="flex items-center">
               <span className="text-lg font-semibold text-gray-700">
                 Suhana
@@ -161,7 +158,7 @@ export function App() {
           )}
 
           <div className="flex gap-2 flex-wrap">
-            {isLoggedIn ? (
+            {isAuthenticated ? (
               <>
                 <div className="flex items-center gap-2">
                   <label
@@ -231,10 +228,7 @@ export function App() {
 
                 <div className="flex items-center">
                   <button
-                    onClick={() => {
-                      setCurrentUser(null);
-                      setApiKey('');
-                    }}
+                    onClick={logout}
                     className="flex items-center gap-2 px-3 py-1 text-sm rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 transition"
                     title="Logout"
                   >
@@ -273,7 +267,7 @@ export function App() {
           </div>
         </div>
 
-        {isLoggedIn ? (
+        {isAuthenticated ? (
           <>
             <ChatMessages messages={messages} />
             <ChatToolbar onSend={handleSendMessage} />
@@ -368,6 +362,7 @@ export function App() {
           onSwitchToLogin={() => setAuthModalView('login')}
         />
       )}
+
     </div>
   );
 }

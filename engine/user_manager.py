@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timedelta
 
 from engine.settings_manager import SettingsManager
+from engine.database.base import DatabaseAdapter
+from engine.engine_config import get_database_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +72,13 @@ class UserManager:
         "history": []
     }
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, base_dir: Optional[Path] = None, db_adapter: Optional[DatabaseAdapter] = None):
         """
         Initialize the UserManager.
 
         Args:
             base_dir: Base directory for user files. If None, uses the parent directory of the current file.
+            db_adapter: Database adapter to use for storage. If None, uses the default adapter from engine_config.
         """
         self.base_dir = base_dir or Path(__file__).parent.parent
         self.users_dir = self.base_dir / "users"
@@ -83,6 +86,12 @@ class UserManager:
 
         # Initialize settings manager
         self.settings_manager = SettingsManager(base_dir=self.base_dir)
+
+        # Initialize database adapter
+        self.db = db_adapter or get_database_adapter()
+
+        # Ensure database schema is initialized
+        self.db.initialize_schema()
 
         # Active sessions (token -> user_id)
         self._sessions = {}
@@ -104,14 +113,6 @@ class UserManager:
         if not username.isalnum() and not all(c.isalnum() or c == '_' for c in username):
             return False, "Username must contain only letters, numbers, and underscores"
 
-        # Check if username already exists
-        user_dir = self.users_dir / username
-        if user_dir.exists():
-            return False, f"User '{username}' already exists"
-
-        # Create user directory
-        user_dir.mkdir(exist_ok=True)
-
         # Create user profile
         profile = self.DEFAULT_PROFILE.copy()
         profile["name"] = name or username
@@ -122,27 +123,31 @@ class UserManager:
         salt = secrets.token_hex(16)
         password_hash = self._hash_password(password, salt)
 
-        # Create auth file
-        auth_data = {
+        # Create user data for database
+        user_id = username  # Use username as user_id for compatibility
+        profile["salt"] = salt
+        user_data = {
+            "id": user_id,
             "username": username,
             "password_hash": password_hash,
-            "salt": salt,
-            "role": role
+            "salt": salt,  # Store salt in the profile for password verification
+            "created_at": datetime.now().isoformat(),
+            "profile": json.dumps(profile)
         }
 
         try:
-            # Save auth data
-            auth_path = user_dir / "auth.json"
-            with open(auth_path, "w", encoding="utf-8") as f:
-                json.dump(auth_data, f, indent=2)
+            # Create user in database
+            created_user_id = self.db.create_user(user_data)
 
-            # Save profile
-            profile_path = user_dir / "profile.json"
-            with open(profile_path, "w", encoding="utf-8") as f:
-                json.dump(profile, f, indent=2)
+            if not created_user_id:
+                return False, f"Failed to create user '{username}' in database"
 
             # Create user-specific settings (empty for now, will inherit from global)
             self.settings_manager.save_settings({"version": 1}, username)
+
+            # Create user directory for backward compatibility
+            user_dir = self.users_dir / username
+            user_dir.mkdir(exist_ok=True)
 
             # Create conversations directory
             conversations_dir = user_dir / "conversations"
@@ -164,20 +169,25 @@ class UserManager:
         Returns:
             Tuple of (success, session_token or None)
         """
-        user_dir = self.users_dir / username
-        auth_path = user_dir / "auth.json"
-
-        if not auth_path.exists():
-            return False, None
-
         try:
-            # Load auth data
-            with open(auth_path, "r", encoding="utf-8") as f:
-                auth_data = json.load(f)
+            # Get user from database
+            user = self.db.get_user(username)
+
+            if not user:
+                return False, None
+
+            # Get salt from user data
+            # Check if salt is in user data directly or in profile
+            if "salt" in user:
+                salt = user["salt"]
+            elif user["profile"] and "salt" in user["profile"]:
+                salt = user["profile"]["salt"]
+            else:
+                logger.error(f"Error authenticating user '{username}': No salt")
+                return False, None
 
             # Verify password
-            salt = auth_data["salt"]
-            stored_hash = auth_data["password_hash"]
+            stored_hash = user["password_hash"]
 
             if self._hash_password(password, salt) == stored_hash:
                 # Create session token
@@ -195,6 +205,7 @@ class UserManager:
 
                 return True, token
 
+            logger.error(f"Error authenticating user '{username}': Password is incorrect")
             return False, None
         except Exception as e:
             logger.error(f"Error authenticating user '{username}': {e}")
@@ -248,14 +259,14 @@ class UserManager:
         Returns:
             Dictionary containing the user's profile, or None if user doesn't exist
         """
-        profile_path = self.users_dir / user_id / "profile.json"
-
-        if not profile_path.exists():
-            return None
-
         try:
-            with open(profile_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            # Get user from database
+            user = self.db.get_user(user_id)
+
+            if isinstance(user["profile"], str):
+                return json.loads(user["profile"])
+            else:
+                return user["profile"]
         except Exception as e:
             logger.error(f"Error loading profile for user '{user_id}': {e}")
             return None
@@ -271,17 +282,15 @@ class UserManager:
         Returns:
             True if profile was saved successfully, False otherwise
         """
-        profile_path = self.users_dir / user_id / "profile.json"
-
         try:
             # Ensure all required sections exist with defaults if missing
             for section in ["preferences", "personalization", "privacy"]:
                 if section not in profile:
                     profile[section] = self.DEFAULT_PROFILE[section]
 
-            with open(profile_path, "w", encoding="utf-8") as f:
-                json.dump(profile, f, indent=2)
-            return True
+            return self.db.update_user(user_id, {
+                "profile": json.dumps(profile)
+            })
         except Exception as e:
             logger.error(f"Error saving profile for user '{user_id}': {e}")
             return False
@@ -293,36 +302,32 @@ class UserManager:
         Returns:
             List of dictionaries containing user information
         """
-        users = []
+        try:
+            # Get users from database
+            db_users = self.db.list_users()
 
-        for user_dir in self.users_dir.iterdir():
-            if not user_dir.is_dir():
-                continue
+            # Format user data
+            users = []
+            for user in db_users:
+                profile = json.loads(user["profile"])
 
-            profile_path = user_dir / "profile.json"
-            auth_path = user_dir / "auth.json"
-
-            if not profile_path.exists() or not auth_path.exists():
-                continue
-
-            try:
-                with open(profile_path, "r", encoding="utf-8") as f:
-                    profile = json.load(f)
-
-                with open(auth_path, "r", encoding="utf-8") as f:
-                    auth_data = json.load(f)
+                # Determine role (might be in profile or directly in user data)
+                role = "user"  # Default role
+                if "role" in profile:
+                    role = profile["role"]
 
                 users.append({
-                    "user_id": user_dir.name,
-                    "name": profile.get("name", user_dir.name),
-                    "role": auth_data.get("role", "user"),
-                    "created_at": profile.get("created_at"),
-                    "last_login": profile.get("last_login")
+                    "user_id": user["id"],
+                    "name": profile.get("name", user["username"]),
+                    "role": role,
+                    "created_at": user.get("created_at") or profile.get("created_at"),
+                    "last_login": user.get("last_login") or profile.get("last_login")
                 })
-            except Exception as e:
-                logger.error(f"Error loading user data for '{user_dir.name}': {e}")
 
-        return users
+            return users
+        except Exception as e:
+            logger.error(f"Error listing users: {e}")
+            return []
 
     def delete_user(self, user_id: str) -> bool:
         """
@@ -334,24 +339,31 @@ class UserManager:
         Returns:
             True if user was deleted successfully, False otherwise
         """
-        user_dir = self.users_dir / user_id
-
-        if not user_dir.exists():
-            return False
-
         try:
-            # Remove all files in user directory
-            for item in user_dir.glob("**/*"):
-                if item.is_file():
-                    item.unlink()
-                elif item.is_dir():
-                    for subitem in item.glob("**/*"):
-                        if subitem.is_file():
-                            subitem.unlink()
-                    item.rmdir()
+            # Delete user from database
+            success = self.db.delete_user(user_id)
 
-            # Remove user directory
-            user_dir.rmdir()
+            if not success:
+                return False
+
+            # For backward compatibility, also delete user directory if it exists
+            user_dir = self.users_dir / user_id
+            if user_dir.exists():
+                try:
+                    # Remove all files in user directory
+                    for item in user_dir.glob("**/*"):
+                        if item.is_file():
+                            item.unlink()
+                        elif item.is_dir():
+                            for subitem in item.glob("**/*"):
+                                if subitem.is_file():
+                                    subitem.unlink()
+                            item.rmdir()
+
+                    # Remove user directory
+                    user_dir.rmdir()
+                except Exception as e:
+                    logger.warning(f"Failed to delete user directory for '{user_id}': {e}")
 
             # Remove any active sessions for this user
             for token, session in list(self._sessions.items()):
@@ -375,19 +387,22 @@ class UserManager:
         Returns:
             Tuple of (success, message)
         """
-        auth_path = self.users_dir / user_id / "auth.json"
-
-        if not auth_path.exists():
-            return False, "User not found"
-
         try:
-            # Load auth data
-            with open(auth_path, "r", encoding="utf-8") as f:
-                auth_data = json.load(f)
+            # Get user from database
+            user = self.db.get_user(user_id)
+
+            if not user:
+                return False, "User not found"
+
+            # Get salt from user data
+            # Check if salt is in user data directly or in profile
+            if "salt" in user:
+                salt = user["salt"]
+            else:
+                return False, "Authentication data not found"
 
             # Verify current password
-            salt = auth_data["salt"]
-            stored_hash = auth_data["password_hash"]
+            stored_hash = user["password_hash"]
 
             if self._hash_password(current_password, salt) != stored_hash:
                 return False, "Current password is incorrect"
@@ -396,13 +411,14 @@ class UserManager:
             new_salt = secrets.token_hex(16)
             new_hash = self._hash_password(new_password, new_salt)
 
-            # Update auth data
-            auth_data["salt"] = new_salt
-            auth_data["password_hash"] = new_hash
+            # Update user in database
+            success = self.db.update_user(user_id, {
+                "password_hash": new_hash,
+                "salt": new_salt
+            })
 
-            # Save auth data
-            with open(auth_path, "w", encoding="utf-8") as f:
-                json.dump(auth_data, f, indent=2)
+            if not success:
+                return False, "Failed to update password in database"
 
             return True, "Password changed successfully"
         except Exception as e:
@@ -442,11 +458,26 @@ class UserManager:
         Args:
             user_id: User ID to update
         """
-        profile = self.get_profile(user_id)
+        try:
+            # Get user from database
+            user = self.db.get_user(user_id)
 
-        if profile:
-            profile["last_login"] = datetime.now().isoformat()
-            self.save_profile(user_id, profile)
+            if user:
+                # Update last_login in database
+                self.db.update_user(user_id, {
+                    "last_login": datetime.now().isoformat()
+                })
+
+                # Also update profile for consistency
+                profile = user["profile"] if isinstance(user["profile"], dict) else json.loads(user["profile"])
+
+                profile["last_login"] = datetime.now().isoformat()
+
+                self.db.update_user(user_id, {
+                    "profile": json.dumps(profile)
+                })
+        except Exception as e:
+            logger.error(f"Error updating last login for user '{user_id}': {e}")
 
     def set_avatar(self, user_id: str, avatar_path: Optional[str]) -> bool:
         """

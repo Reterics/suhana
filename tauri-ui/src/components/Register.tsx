@@ -8,7 +8,7 @@ interface RegisterProps {
 }
 
 export function Register({ onClose, onSwitchToLogin }: RegisterProps) {
-  const { setApiKey, setCurrentUser } = useChat();
+  const { login, registerUser } = useChat();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,16 +25,11 @@ export function Register({ onClose, onSwitchToLogin }: RegisterProps) {
     }
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, name: name || username })
-      });
-      if (!response.ok)
-        throw new Error((await response.text()) || 'Registration failed');
-      const data = await response.json();
-      setApiKey(data.api_key);
-      setCurrentUser(data.user_id);
+      // Use the registerUser method from ChatContext
+      const data = await registerUser(username, password, name);
+
+      // Use the login method to create a user session
+      login(data.user_id, data.api_key);
       onClose();
     } catch (err) {
       setError(`Registration failed: ${(err as Error).message}`);

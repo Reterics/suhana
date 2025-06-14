@@ -66,6 +66,12 @@ export interface LLMOptions {
   openai: string[];
 }
 
+export interface UserSession {
+  userId: string;
+  apiKey: string;
+  lastLogin: Date;
+}
+
 interface ChatState {
   conversationId: string;
   messages: ChatMessage[];
@@ -90,28 +96,32 @@ interface ChatState {
     settings: Partial<Settings>
   ) => Promise<{ settings: Settings }>;
 
+  // User session management
+  userSession: UserSession | null;
+  login: (userId: string, apiKey: string) => void;
+  logout: () => void;
+  isAuthenticated: boolean;
+
   // User profile management
-  currentUser: string | null;
-  setCurrentUser: (userId: string | null) => void;
   getUsers: () => Promise<{ users: any[] }>;
-  getProfile: (userId: string) => Promise<{ profile: UserProfile }>;
+  getProfile: (userId?: string) => Promise<{ profile: UserProfile }>;
   updateProfile: (
     userId: string,
     profile: Partial<UserProfile>
   ) => Promise<{ profile: UserProfile }>;
-  getPreferences: (userId: string) => Promise<{ preferences: UserPreferences }>;
+  getPreferences: (userId?: string) => Promise<{ preferences: UserPreferences }>;
   updatePreferences: (
     userId: string,
     preferences: Partial<UserPreferences>
   ) => Promise<{ preferences: UserPreferences }>;
   getPersonalization: (
-    userId: string
+    userId?: string
   ) => Promise<{ personalization: UserPersonalization }>;
   updatePersonalization: (
     userId: string,
     personalization: Partial<UserPersonalization>
   ) => Promise<{ personalization: UserPersonalization }>;
-  getPrivacySettings: (userId: string) => Promise<{ privacy: UserPrivacy }>;
+  getPrivacySettings: (userId?: string) => Promise<{ privacy: UserPrivacy }>;
   updatePrivacySettings: (
     userId: string,
     privacy: Partial<UserPrivacy>
@@ -191,24 +201,38 @@ export function ChatProvider({
     null
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [apiKey, setApiKey] = useState(
-    localStorage.getItem('suhana_key') || ''
-  );
+  const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [currentUser, setCurrentUser] = useState<string | null>(
-    localStorage.getItem('suhana_current_user') || null
-  );
+  const [userSession, setUserSession] = useState<UserSession | null>(() => {
+    const storedSession = localStorage.getItem('suhana_user_session');
+    if (storedSession) {
+      try {
+        return JSON.parse(storedSession);
+      } catch (e) {
+        console.error('Failed to parse user session from localStorage', e);
+        return null;
+      }
+    }
+    return null;
+  });
   const lastCheckedKey = useRef<string | null>(null);
 
   const apiReady = !error && !loading;
+  // Check if we have a valid session and set the API key accordingly
+  useEffect(() => {
+    if (userSession?.apiKey && !apiKey) {
+      setApiKey(userSession.apiKey);
+    }
+  }, [userSession, apiKey]);
+
+  // Effect for API key changes
   useEffect(() => {
     if (!apiKey) {
       setLoading(false);
       return;
     }
     if (apiKey === lastCheckedKey.current) return;
-    localStorage.setItem('suhana_key', apiKey);
     lastCheckedKey.current = apiKey;
     void listConversations().then(() => setLoading(false));
   }, [apiKey]);
@@ -324,13 +348,18 @@ export function ChatProvider({
 
   // User profile management methods
   const getUsers = async () => {
-    const data = await fetchWithKey(`${BASE_URL}/users`, apiKey, setError);
+    const data = await fetchWithKey(`${BASE_URL}/users`, apiKey, setError) as {users: UserProfile[]};
     return { users: data?.users || [] };
   };
 
-  const getProfile = async (userId: string) => {
+  const getProfile = async (userId?: string) => {
+    const targetUserId = userId || userSession?.userId;
+    if (!targetUserId) {
+      throw new Error('User ID is required when not authenticated');
+    }
+
     const data = await fetchWithKey(
-      `${BASE_URL}/profile/${userId}`,
+      `${BASE_URL}/profile/${targetUserId}`,
       apiKey,
       setError
     );
@@ -356,9 +385,14 @@ export function ChatProvider({
     return { profile: data?.profile as UserProfile };
   };
 
-  const getPreferences = async (userId: string) => {
+  const getPreferences = async (userId?: string) => {
+    const targetUserId = userId || userSession?.userId;
+    if (!targetUserId) {
+      throw new Error('User ID is required when not authenticated');
+    }
+
     const data = await fetchWithKey(
-      `${BASE_URL}/profile/${userId}/preferences`,
+      `${BASE_URL}/profile/${targetUserId}/preferences`,
       apiKey,
       setError
     );
@@ -384,9 +418,14 @@ export function ChatProvider({
     return { preferences: data?.preferences as UserPreferences };
   };
 
-  const getPersonalization = async (userId: string) => {
+  const getPersonalization = async (userId?: string) => {
+    const targetUserId = userId || userSession?.userId;
+    if (!targetUserId) {
+      throw new Error('User ID is required when not authenticated');
+    }
+
     const data = await fetchWithKey(
-      `${BASE_URL}/profile/${userId}/personalization`,
+      `${BASE_URL}/profile/${targetUserId}/personalization`,
       apiKey,
       setError
     );
@@ -412,9 +451,14 @@ export function ChatProvider({
     return { personalization: data?.personalization as UserPersonalization };
   };
 
-  const getPrivacySettings = async (userId: string) => {
+  const getPrivacySettings = async (userId?: string) => {
+    const targetUserId = userId || userSession?.userId;
+    if (!targetUserId) {
+      throw new Error('User ID is required when not authenticated');
+    }
+
     const data = await fetchWithKey(
-      `${BASE_URL}/profile/${userId}/privacy`,
+      `${BASE_URL}/profile/${targetUserId}/privacy`,
       apiKey,
       setError
     );
@@ -439,6 +483,29 @@ export function ChatProvider({
     );
     return { privacy: data?.privacy as UserPrivacy };
   };
+
+  // Login method to create a user session
+  const login = (userId: string, apiKey: string) => {
+    const session: UserSession = {
+      userId,
+      apiKey,
+      lastLogin: new Date()
+    };
+    setUserSession(session);
+    setApiKey(apiKey);
+    localStorage.setItem('suhana_user_session', JSON.stringify(session));
+  };
+
+  // Logout method to clear the user session
+  const logout = () => {
+    setUserSession(null);
+    setApiKey('');
+    localStorage.removeItem('suhana_user_session');
+    localStorage.removeItem('suhana_key');
+  };
+
+  // Computed property to check if user is authenticated
+  const isAuthenticated = !!userSession?.userId && !!userSession?.apiKey;
 
   const registerUser = async (
     username: string,
@@ -483,7 +550,6 @@ export function ChatProvider({
         apiKey,
         setApiKey: (key: string) => {
           setApiKey(key);
-          localStorage.setItem('suhana_key', key);
         },
         apiReady,
         error,
@@ -497,16 +563,13 @@ export function ChatProvider({
         getSettings,
         updateSettings,
 
+        // User session management
+        userSession,
+        login,
+        logout,
+        isAuthenticated,
+
         // User profile management
-        currentUser,
-        setCurrentUser: (userId: string | null) => {
-          setCurrentUser(userId);
-          if (userId) {
-            localStorage.setItem('suhana_current_user', userId);
-          } else {
-            localStorage.removeItem('suhana_current_user');
-          }
-        },
         getUsers,
         getProfile,
         updateProfile,
