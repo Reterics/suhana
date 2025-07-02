@@ -1,6 +1,7 @@
 import { JSX } from 'preact/jsx-runtime';
 import { ConversationMeta } from '../context/ChatContext.tsx';
 import { Plus, X } from 'lucide-preact';
+import { useRef } from "preact/hooks";
 
 interface SidebarProps {
   conversations: ConversationMeta[];
@@ -15,15 +16,34 @@ export default function Sidebar({
   hidden,
   toggle
 }: SidebarProps): JSX.Element {
+  const errorCount = useRef(0);
+
+  const handleError: JSX.GenericEventHandler<HTMLImageElement> = (e) => {
+    errorCount.current++;
+    if (errorCount.current > 5) {
+      console.error("Image failed to load after retries.");
+      return;
+    }
+    if (e.target) {
+      console.error(e)
+      setTimeout(() => {
+        (e.target as HTMLImageElement).src = `${(e.target as HTMLImageElement).src.split('?')[0]}?time=${Date.now()}`;
+      }, 1000)
+    } else {
+      console.error("Image failed to load after retries.");
+    }
+  };
+
   return (
     <aside
       className={`transition-all duration-300 bg-white border-r border-gray-200 shadow-sm h-full flex flex-col ${hidden ? 'w-0 overflow-hidden' : 'w-40 p-2'}`}
     >
       <div className="flex items-center justify-between mb-4">
         <img
-          src="http://localhost:8000/assets/logos/suhana_right.png"
+          src={window.location.protocol + "//" + window.location.hostname + ":8000/assets/logos/suhana_right.png"}
           alt="Suhana"
           className="h-6 w-auto opacity-90"
+          onError={handleError}
         />
         <button
           onClick={toggle}

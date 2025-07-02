@@ -241,7 +241,9 @@ export function ChatProvider({
     const conversations = await fetchWithKey(
       `${BASE_URL}/conversations`,
       apiKey,
-      setError
+      setError,
+      undefined,
+      10
     );
     if (Array.isArray(conversations)) {
       setConversationList(conversations);
