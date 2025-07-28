@@ -197,11 +197,11 @@ def get_conversations(user_id: str = Depends(verify_api_key)):
 
     # Create conversation store
     conversation_store = ConversationStore()
-
     # Check if user has permission to view all conversations
     if check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS):
         # Get all conversations from all users
         all_conversations = []
+        conversation_ids = set()
 
         # Get list of all users
         from engine.user_manager import UserManager
@@ -214,21 +214,27 @@ def get_conversations(user_id: str = Depends(verify_api_key)):
             for conv in user_conversations:
                 conv["user_id"] = user["id"]
                 conv["user_name"] = user.get("name", user["id"])
+                conversation_ids.add(conv["id"])
             all_conversations.extend(user_conversations)
 
         # Also get legacy conversations (not associated with a user)
         legacy_conversations = conversation_store.list_conversation_meta()
-        all_conversations.extend(legacy_conversations)
+        for conv in legacy_conversations:
+            if conv["id"] not in conversation_ids:
+                all_conversations.append(conv)
 
         return all_conversations
     else:
         # Get only the user's conversations
         user_conversations = conversation_store.list_conversation_meta(user_id)
 
+        # Track conversation IDs to avoid duplicates
+        conversation_ids = {conv["id"] for conv in user_conversations}
+
         # Also get legacy conversations if they don't have a user_id
         legacy_conversations = conversation_store.list_conversation_meta()
         for conv in legacy_conversations:
-            if "user_id" not in conv:
+            if "user_id" not in conv and conv["id"] not in conversation_ids:
                 user_conversations.append(conv)
 
         return user_conversations

@@ -53,7 +53,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Registration state
-  const [registrationForm, setRegistrationForm] = useState({
+  /*const [registrationForm, setRegistrationForm] = useState({
     username: '',
     password: '',
     confirmPassword: '',
@@ -62,7 +62,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const [registrationSuccess, setRegistrationSuccess] = useState<{
     user_id: string;
     api_key: string;
-  } | null>(null);
+  } | null>(null);*/
 
   useEffect(() => {
     if (isOpen) {

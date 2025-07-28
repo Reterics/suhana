@@ -116,6 +116,8 @@ def load_metadata(path: Union[str, Path]) -> Optional[Dict[str, Any]]:
                     logger.warning("Metadata is invalid")
         except Exception as e:
             logger.warning(f"Failed to load metadata: {e}")
+    else:
+        print('Metadata not found: ', metadata_path)
     return metadata
 
 

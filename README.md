@@ -10,7 +10,7 @@
 > Suhana _(수하나)_ is your self-hosted AI companion: a modular chat agent with a personality, local knowledge base, and the ability to run commands — all without giving away your data.
 
 
-![showcase_readme.gif](assets/showcase_readme.gif)
+![screenshot.png](assets/screenshot.png)
 
 ---
 

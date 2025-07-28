@@ -1,12 +1,13 @@
-import subprocess
-from datetime import datetime, timedelta
+import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, Generator
 
 from engine.interfaces import VectorStoreInterface, VectorStoreManagerInterface, MemoryStoreInterface, LLMBackendInterface
 from engine.profile import summarize_profile_for_prompt
 from langchain_community.vectorstores import FAISS
-from engine.utils import get_embedding_model, load_vectorstore, load_metadata
+
+from engine.project_detector import detect_project_type
+from engine.utils import get_embedding_model, load_vectorstore, refresh_vectorstore, load_metadata
 from engine.di import container
 from engine.error_handling import (
     error_boundary,
@@ -118,19 +119,20 @@ class VectorStoreManager(VectorStoreManagerInterface):
         # Update the current mode
         self._current_vector_mode = mode
 
-        if not (vectorstore_path / "index.faiss").exists() and mode == "normal":
-            logger.info("📄 Vectorstore not found — running ingest.py...")
-            try:
-                subprocess.run(["python", "ingest.py"], check=True)
-            except subprocess.CalledProcessError as e:
-                raise VectorStoreError(
-                    f"Failed to run ingest.py: {e}",
-                    details={"path": str(path)},
-                    cause=e
-                )
-
-        # Load metadata
-        self._project_metadata = load_metadata(vectorstore_path)
+        if not (vectorstore_path / "index.faiss").exists() and path:
+            logger.info("📄 Vectorstore not found — refreshing vectorstore...")
+            refresh_vectorstore(path)
+        elif path and not (Path(path)/ 'metadata.json').exists():
+            print('Refresh metadata')
+            metadata_path = Path(path)
+            self._project_metadata = detect_project_type(metadata_path)
+            metadata = {
+                'project_info': self._project_metadata,
+            }
+            with open(metadata_path / 'metadata.json', 'w') as f:
+                json.dump(metadata, f, indent=2)
+        else:
+            self._project_metadata = load_metadata(vectorstore_path)
 
         return self.reload_vectorstore()
 
