@@ -22,3 +22,8 @@ speech.wav
 tauri-ui/coverage
 metadata.json
 /users/**/*.json
+build/
+dist/
+node_modules/
+target/
+out/

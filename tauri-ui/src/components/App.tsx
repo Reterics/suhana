@@ -358,6 +358,8 @@ console.error(apiReady, isAuthenticated)
             setFolderSelectorOpen(false);
             if (conversationId) {
               void updateConversationMetadata(currentMode, path);
+            } else {
+              console.error('Conversation ID is not defined')
             }
           }}
           onClose={() => setFolderSelectorOpen(false)}

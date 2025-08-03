@@ -31,12 +31,13 @@ def detect_javascript_project(project_path: Path) -> Optional[Dict[str, Any]]:
 
         metadata = {
             "project_type": "javascript",
-            "name": package_data.get("name", ""),
+            "name": package_data.get("name", project_path.name),
             "version": package_data.get("version", ""),
             "description": package_data.get("description", ""),
             "main": package_data.get("main", ""),
             "author": package_data.get("author", ""),
             "license": package_data.get("license", ""),
+            "path": str(project_path),
         }
 
         return metadata
@@ -71,6 +72,8 @@ def detect_typescript_project(project_path: Path) -> Optional[Dict[str, Any]]:
             "compiler_options": tsconfig_data.get("compilerOptions", {}),
             "include": tsconfig_data.get("include", []),
             "exclude": tsconfig_data.get("exclude", []),
+            "path": str(project_path),
+            "name": project_path.name
         })
 
         return metadata
@@ -101,6 +104,8 @@ def detect_python_project(project_path: Path) -> Optional[Dict[str, Any]]:
         "has_pyproject_toml": pyproject_path.exists(),
         "has_requirements_txt": requirements_path.exists(),
         "has_setup_py": setup_py_path.exists(),
+        "path": str(project_path),
+        "name": project_path.name,
     }
 
     # Extract metadata from pyproject.toml if it exists

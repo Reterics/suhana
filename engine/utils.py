@@ -7,12 +7,14 @@ This module contains shared utilities used across the Suhana codebase.
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, Tuple
 
 from langchain_community.vectorstores import FAISS
 
 from engine.error_handling import VectorStoreError
+from engine.project_detector import detect_project_type
 
 # The HuggingFaceEmbeddings class from langchain_community.embeddings is deprecated
 # To fix this properly, run: pip install -U langchain-huggingface
@@ -61,7 +63,6 @@ def save_vectorstore(
     documents: List[Document],
     embedding_model: HuggingFaceEmbeddings,
     target_dir: Union[str, Path],
-    metadata: Optional[Dict[str, Any]] = None
 ) -> FAISS:
     """
     Create and save a FAISS vector store from documents.
@@ -70,7 +71,6 @@ def save_vectorstore(
         documents: List of documents to index
         embedding_model: The embedding model to use
         target_dir: Directory to save the vector store
-        metadata: Optional metadata to save with the vector store
 
     Returns:
         The created FAISS vector store
@@ -83,11 +83,6 @@ def save_vectorstore(
     # Create vector store
     vectorstore = FAISS.from_documents(documents, embedding_model)
     vectorstore.save_local(str(target_path))
-
-    # Save metadata if provided
-    if metadata:
-        with open(target_path / 'metadata.json', 'w') as f:
-            json.dump(metadata, f, indent=2)
 
     return vectorstore
 
@@ -116,6 +111,9 @@ def load_metadata(path: Union[str, Path]) -> Optional[Dict[str, Any]]:
                     logger.warning("Metadata is invalid")
         except Exception as e:
             logger.warning(f"Failed to load metadata: {e}")
+    elif path_obj.exists():
+        print('Metadata not found: ', metadata_path, 'fallback to live detection')
+        metadata = detect_project_type(path_obj)
     else:
         print('Metadata not found: ', metadata_path)
     return metadata
@@ -162,10 +160,12 @@ def refresh_vectorstore(
     path: Union[str, Path],
     embedding_model: Optional[HuggingFaceEmbeddings] = None
 ) -> Optional[FAISS]:
-    target = Path(path).name
+    path = Path(path).resolve()
+    project_dir = Path(path).parent.resolve()
     logger.info("📄 Vectorstore — running ingest_project.py to update project...")
     try:
-        subprocess.run(["python", "ingest_project.py", target, "--target", target], check=True)
+        subprocess.run([sys.executable, "ingest_project.py", str(project_dir), "--target", str(path)], check=True)
+
     except subprocess.CalledProcessError as e:
         raise VectorStoreError(
             f"Failed to run ingest_project.py: {e}",

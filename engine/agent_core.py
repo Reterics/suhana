@@ -19,9 +19,6 @@ from engine.logging_config import get_logger
 # Get a logger for this module
 logger = get_logger(__name__)
 
-# Constants
-VECTORSTORE_PATH = Path(__file__).parent.parent / "vectorstore"
-
 # Implementation of VectorStoreManager that implements the interface
 class VectorStoreManager(VectorStoreManagerInterface):
     """
@@ -68,8 +65,15 @@ class VectorStoreManager(VectorStoreManagerInterface):
     @error_boundary(fallback_value=None, error_type=VectorStoreError)
     def reload_vectorstore(self):
         if self._project_metadata is None:
+            logger.warning('Project Metadata is empty, fallback')
             return None
-        vectorstore_path = self._project_metadata.get('path', VECTORSTORE_PATH)
+
+        project_path = self._project_metadata.get('path', None)
+        if project_path is None:
+            logger.warning('Project path is not defined in metadata, fallback')
+            return None
+
+        vectorstore_path = Path(project_path)/ 'vectorstore'
         vectorstore = load_vectorstore(vectorstore_path, self._embedding_model)
         if vectorstore is None:
             return None
@@ -112,7 +116,10 @@ class VectorStoreManager(VectorStoreManagerInterface):
             return self._vectorstore
 
         # Determine the path to the vectorstore
-        vectorstore_path = VECTORSTORE_PATH
+        if path is None or path == "":
+            return None
+
+        vectorstore_path = (Path(path)/ 'vectorstore')
 
         logger.info(f"📄 Get Vectorstore - Mode: {mode} Path: {path} Previous Path: {prev_path}")
 
@@ -121,18 +128,20 @@ class VectorStoreManager(VectorStoreManagerInterface):
 
         if not (vectorstore_path / "index.faiss").exists() and path:
             logger.info("📄 Vectorstore not found — refreshing vectorstore...")
-            refresh_vectorstore(path)
+            refresh_vectorstore(vectorstore_path)
+            self._project_metadata = load_metadata(path)
         elif path and not (Path(path)/ 'metadata.json').exists():
             print('Refresh metadata')
             metadata_path = Path(path)
             self._project_metadata = detect_project_type(metadata_path)
             metadata = {
+                'project_path': str(path),
                 'project_info': self._project_metadata,
             }
             with open(metadata_path / 'metadata.json', 'w') as f:
                 json.dump(metadata, f, indent=2)
-        else:
-            self._project_metadata = load_metadata(vectorstore_path)
+        elif self._project_metadata is None:
+            self._project_metadata = load_metadata(path)
 
         return self.reload_vectorstore()
 
@@ -316,15 +325,21 @@ def handle_input(
     if mems:
         context_parts.append("MEMORY:\n" + "\n".join(f"- {m.page_content}" for m in mems))
 
+    path = profile.get("project_path", None)
+    if path is None and profile.get("mode") == "development":
+        logger.warning("Vectorstore path is not defined in the Profile")
+
     # Include documents if needed
-    if include_docs:
+    if include_docs or profile.get("mode") == "development":
         # Get the vectorstore for the current profile
         current_vectorstore = vectorstore_manager.get_vectorstore(profile)
 
         if current_vectorstore:
             try:
                 docs_with_scores = current_vectorstore.similarity_search_with_score(user_input, k=10)
-                docs = [doc for doc, score in docs_with_scores if score < 0.3]
+                logger.info(f"Found {len(docs_with_scores)} raw documents relevant to query: {user_input}")
+                docs = [doc for doc, score in docs_with_scores if score > 0.7]
+                logger.info(f"Found {len(docs)} filtered documents relevant to query: {user_input}")
                 if docs:
                     context_parts.append("DOCUMENTS:\n" + "\n".join(f"- {d.page_content}" for d in docs))
             except Exception as e:

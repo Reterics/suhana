@@ -8,11 +8,9 @@ Usage:
     python ingest.py
 """
 
-import os
 import sys
 from pathlib import Path
 
-from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import CharacterTextSplitter
 from engine.utils import configure_logging, get_embedding_model, save_vectorstore

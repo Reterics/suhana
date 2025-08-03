@@ -10,11 +10,14 @@ Usage:
 Example:
     python ingest_project.py ./my_project --target ./my_vectorstore --model all-MiniLM-L6-v2
 """
+import json
 import logging
 import sys
 import argparse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
+
+import pathspec
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
@@ -143,45 +146,18 @@ def get_appropriate_splitter(
         chunk_overlap=default_chunk_overlap
     )
 
-def should_exclude(path: Path, exclude_patterns: List[str]) -> bool:
-    """
-    Check if a path should be excluded based on patterns.
-
-    Automatically excludes:
-    - Files and folders starting with a dot (like .git, .venv)
-    - Common package-related folders (node_modules, dist, build, venv, logs)
-    - Any paths matching user-provided exclude patterns
-    """
-    # Get the path as a string for pattern matching
-    path_str = str(path)
+def should_exclude(path: Path, spec: Optional[pathspec.PathSpec]) -> bool:
 
     # Check if any part of the path starts with a dot (like .git, .venv)
     for part in path.parts:
-        if part.startswith('.'):
+        if part.startswith('.') or part in {
+            'node_modules/', 'dist/', 'build/', 'venv/', '.venv', '/logs/',
+            '__pycache__', '/vectorstore/'
+        }:
             return True
 
-    # Common package-related folders to exclude
-    common_excludes = [
-        'node_modules',
-        'dist',
-        'build',
-        'venv',
-        '.venv',
-        'logs',
-        '__pycache__'
-    ]
-
-    # Check for common package folders
-    for exclude in common_excludes:
-        if exclude in path_str:
-            return True
-
-    # Check user-provided exclude patterns
-    for pattern in exclude_patterns:
-        if pattern in path_str:
-            return True
-
-    return False
+    rel_path = str(path.relative_to(spec.root if hasattr(spec, "root") else path.anchor))
+    return spec.match_file(rel_path)
 
 def process_file(
     file_path: Path,
@@ -215,13 +191,22 @@ def process_file(
         logger.warning(f"Failed to process {file_path.name}: {str(e)}")
         return []
 
+def load_gitignore_spec(project_path: Path) -> Optional[pathspec.PathSpec]:
+    gitignore_path = project_path / ".gitignore"
+    if not gitignore_path.exists():
+        logger.error('Gitignore is not found')
+        return None
+    lines = gitignore_path.read_text().splitlines()
+    filtered_lines = [line for line in lines if line.strip() and not line.strip().startswith("#")]
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", filtered_lines)
+    return spec
+
 def index_project(
     project_path: Path,
     target_store: Path,
     embedding_model_name: str,
     chunk_size: int,
     chunk_overlap: int,
-    exclude_patterns: List[str],
     verbose: bool
 ) -> Tuple[int, int]:
     """
@@ -233,7 +218,6 @@ def index_project(
         embedding_model_name: Name of the HuggingFace embedding model
         chunk_size: Size of text chunks for indexing
         chunk_overlap: Overlap between text chunks
-        exclude_patterns: List of additional patterns to exclude (beyond defaults)
         verbose: Whether to enable verbose logging
 
     Notes:
@@ -256,6 +240,7 @@ def index_project(
 
     # Get all supported extensions
     supported_extensions = get_all_supported_extensions()
+    gitignore_excludes = load_gitignore_spec(project_path)
 
     # Process files
     all_documents = []
@@ -264,7 +249,7 @@ def index_project(
     logger.info(f"Scanning project directory: {project_path}")
     for path in project_path.rglob("*"):
         # Skip directories and excluded paths
-        if not path.is_file() or should_exclude(path, exclude_patterns):
+        if not path.is_file() or should_exclude(path, gitignore_excludes):
             continue
 
         # Skip unsupported file types
@@ -292,12 +277,15 @@ def index_project(
             'chunk_size': chunk_size,
             'chunk_overlap': chunk_overlap,
             'project_path': str(project_path),
-            'excluded_patterns': exclude_patterns,
             'project_info': project_metadata,
         }
 
-        # Save vector store and metadata
-        save_vectorstore(all_documents, embedding_model, target_store, metadata)
+        # Save vector store
+        save_vectorstore(all_documents, embedding_model, target_store)
+
+        # Save metadata
+        with open(project_path / 'metadata.json', 'w') as f:
+            json.dump(metadata, f, indent=2)
 
         logger.info(f"✅ Project indexed to {target_store}")
         return files_processed, len(all_documents)
@@ -322,7 +310,6 @@ def main():
         embedding_model_name=args.model,
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
-        exclude_patterns=args.exclude,
         verbose=args.verbose
     )
 

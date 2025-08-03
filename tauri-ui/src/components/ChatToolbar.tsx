@@ -21,6 +21,8 @@ export function ChatToolbar({ onSend }: Props) {
   const [recording, setRecording] = useState(false);
   const segmentCount = 10;
   const activeSegments = Math.round(Math.min(volume * 0.2, segmentCount));
+  const enterCountRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout>| null>(null);
 
   const intervalRef = useRef<number>();
 
@@ -112,13 +114,41 @@ export function ChatToolbar({ onSend }: Props) {
     }, 200);
   }
 
+  const sendMessage = () => {
+    const message = input.trim();
+    if (message) {
+      onSend(message);
+      setInput('');
+    }
+  };
+
+  const onKeyUp = (e: KeyboardEvent) => {
+    setInput((e.target as HTMLInputElement).value)
+
+    if (e.key === 'Enter') {
+      enterCountRef.current += 1;
+
+      if (enterCountRef.current === 2) {
+        enterCountRef.current = 0;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        sendMessage();
+        return;
+      }
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        enterCountRef.current = 0;
+      }, 1000);
+    }
+  }
+
   return (
     <div className="p-3 border-t border-t-gray-300 bg-white space-y-1">
       <textarea
         rows={2}
         value={input}
         placeholder="Type a message..."
-        onInput={e => setInput((e.target as HTMLInputElement).value)}
+        onKeyUp={onKeyUp}
         className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-none bg-neutral-50"
       />
 
@@ -218,12 +248,7 @@ export function ChatToolbar({ onSend }: Props) {
             <Mic className="h-5 w-5 hover:text-black" />
           </button>
           <button
-            onClick={() => {
-              if (input.trim()) {
-                onSend(input);
-                setInput('');
-              }
-            }}
+            onClick={sendMessage}
             className="text-white bg-black p-2 rounded hover:bg-gray-800"
             title="Send"
           >
