@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
-import { BASE_URL, useChat } from '../context/ChatContext.tsx';
+import {BASE_URL, useChat} from '../context/ChatContext.tsx';
 import {
   Menu,
   FolderSearch,
@@ -21,6 +21,7 @@ import { Register } from './Register.tsx';
 
 export function App() {
   const {
+    settings,
     apiReady,
     error,
     conversationList,
@@ -29,6 +30,7 @@ export function App() {
     apiKey,
     messages,
     setMessages,
+    sendMessage,
     sendStreamingMessage,
     projectMetadata,
     setProjectMetadata,
@@ -77,17 +79,31 @@ console.error(apiReady, isAuthenticated)
     ]);
     const index = messages.length + 1;
     let text = '';
-    await sendStreamingMessage(input, token => {
-      text += token;
-      setMessages(prev => {
-        const copy = [...prev];
-        copy[index] = {
-          role: 'assistant',
-          content: text
-        };
-        return copy;
+    if (settings?.streaming) {
+      return await sendStreamingMessage(input, token => {
+        text += token;
+        setMessages(prev => {
+          const copy = [...prev];
+          copy[index] = {
+            role: 'assistant',
+            content: text
+          };
+          return copy;
+        });
       });
-    });
+    }
+    sendMessage(input).then(response => {
+      if (response) {
+        setMessages(prev => {
+          const copy = [...prev];
+          copy[index] = {
+            role: 'assistant',
+            content: response
+          };
+          return copy;
+        });
+      }
+    })
   }
 
   async function updateConversationMetadata(mode: string, path: string) {

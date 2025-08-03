@@ -1,12 +1,30 @@
 import google.generativeai as genai
 from engine.history import trim_message_history
+from engine.backends.error_handling import handle_backend_errors, handle_streaming_errors
 
 GEMINI_SUMMARY_PROMPT = "Summarize the following conversation briefly:"
 
 def _setup_genai(api_key):
+    """
+    Configure the Gemini API with the provided API key.
+
+    Args:
+        api_key: Gemini API key
+    """
     genai.configure(api_key=api_key)
 
 def summarize_history_gemini(messages, api_key, model):
+    """
+    Summarize conversation history using Gemini API.
+
+    Args:
+        messages: List of message dictionaries
+        api_key: Gemini API key
+        model: Gemini model name
+
+    Returns:
+        Summary of the conversation
+    """
     _setup_genai(api_key)
     flat = ""
     for msg in messages:
@@ -19,7 +37,21 @@ def summarize_history_gemini(messages, api_key, model):
     response = model_obj.generate_content(prompt)
     return response.text.strip()
 
+@handle_backend_errors("Gemini")
 def query_gemini(prompt, system_prompt, profile, settings, force_stream):
+    """
+    Query the Gemini API with the given prompt.
+
+    Args:
+        prompt: User input
+        system_prompt: System instructions
+        profile: User profile with conversation history
+        settings: Application settings
+        force_stream: Whether to force streaming mode
+
+    Returns:
+        Response from Gemini or a generator for streaming responses
+    """
     api_key = settings.get("gemini_api_key")
     if not api_key:
         return "[❌ Gemini API key not set. Please define it in settings.json or as an env var.]"
@@ -46,30 +78,24 @@ def query_gemini(prompt, system_prompt, profile, settings, force_stream):
     text += f"\nUser: {prompt}\nAssistant:"
 
     if stream:
-        def gen():
+        def stream_generator():
             stream_reply = ""
-            try:
-                # SDK streaming generator
-                response_stream = model_obj.generate_content(text, stream=True)
-                for chunk in response_stream:
-                    token = chunk.text
-                    stream_reply += token
-                    yield token
-            except Exception:
-                error_msg = "[Gemini connection error]"
-                stream_reply += error_msg
-                yield error_msg
+            # SDK streaming generator
+            response_stream = model_obj.generate_content(text, stream=True)
+            for chunk in response_stream:
+                token = chunk.text
+                stream_reply += token
+                yield token
             profile["history"].extend([
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": stream_reply}
             ])
-        return gen()
+
+        # Wrap the generator with error handling
+        return handle_streaming_errors("Gemini", stream_generator)()
     else:
-        try:
-            response = model_obj.generate_content(text)
-            reply = response.text.strip()
-        except Exception:
-            reply = "[Gemini connection error]"
+        response = model_obj.generate_content(text)
+        reply = response.text.strip()
         profile["history"].extend([
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": reply}

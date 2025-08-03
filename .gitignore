@@ -20,3 +20,5 @@ speech.wav
 *.log.*
 .coverage
 tauri-ui/coverage
+metadata.json
+/users/**/*.json

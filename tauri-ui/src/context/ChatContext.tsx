@@ -91,7 +91,8 @@ interface ChatState {
   transcribe: (blob: Blob) => Promise<string>;
   projectMetadata: ProjectMeta | null;
   setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
-  getSettings: () => Promise<{ settings: Settings; llm_options: LLMOptions }>;
+  settings: Settings | null;
+  llmOptions: LLMOptions | null;
   updateSettings: (
     settings: Partial<Settings>
   ) => Promise<{ settings: Settings }>;
@@ -218,11 +219,23 @@ export function ChatProvider({
   });
   const lastCheckedKey = useRef<string | null>(null);
 
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [llmOptions, setLlmOptions] = useState<LLMOptions | null>(null);
+
   const apiReady = !error && !loading;
   // Check if we have a valid session and set the API key accordingly
   useEffect(() => {
     if (userSession?.apiKey && !apiKey) {
       setApiKey(userSession.apiKey);
+    }
+    if (userSession && apiKey) {
+      void getSettings().then(({
+      llm_options,
+      settings
+    }) => {
+      setSettings(settings);
+      setLlmOptions(llm_options);
+    });
     }
   }, [userSession, apiKey]);
 
@@ -270,7 +283,7 @@ export function ChatProvider({
     const data = await fetchWithKey(`${BASE_URL}/query`, apiKey, setError, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         input,
@@ -345,12 +358,13 @@ export function ChatProvider({
       },
       body: JSON.stringify(settings)
     });
+    setSettings(data?.settings as Settings);
     return { settings: data?.settings as Settings };
   };
 
   // User profile management methods
   const getUsers = async () => {
-    const data = await fetchWithKey(`${BASE_URL}/users`, apiKey, setError) as {users: UserProfile[]};
+    const data = await fetchWithKey(`${BASE_URL}/users`, apiKey, (e) => console.error(e)) as {users: UserProfile[]};
     return { users: data?.users || [] };
   };
 
@@ -562,7 +576,9 @@ export function ChatProvider({
         transcribe,
         projectMetadata,
         setProjectMetadata,
-        getSettings,
+
+        settings,
+        llmOptions,
         updateSettings,
 
         // User session management

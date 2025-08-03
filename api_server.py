@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from engine.backends.ollama import get_downloaded_models
 from engine.engine_config import load_settings, save_settings
 from engine.agent_core import handle_input
 from engine.api_key_store import load_valid_api_keys
@@ -129,7 +131,7 @@ class UserLogin(BaseModel):
 
 @app.post("/query")
 def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
-    profile = load_conversation(req.conversation_id)
+    profile = load_conversation(req.conversation_id, user_id)
 
     # Check if the conversation exists and belongs to the user
     if not profile:
@@ -145,7 +147,7 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
             raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
 
     reply = handle_input(req.input, req.backend, profile, settings)
-    save_conversation(req.conversation_id, profile)
+    save_conversation(req.conversation_id, profile, user_id)
     return {"response": reply}
 
 @app.post("/transcribe")
@@ -162,7 +164,7 @@ async def transcribe(audio: UploadFile = File(...)):
 
 @app.post("/query/stream")
 def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
-    profile = load_conversation(req.conversation_id)
+    profile = load_conversation(req.conversation_id, user_id)
 
     # Check if the conversation exists and belongs to the user
     if not profile:
@@ -178,7 +180,7 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
             raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
 
     generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
-    save_conversation(req.conversation_id, profile)
+    save_conversation(req.conversation_id, profile, user_id)
     return StreamingResponse(generator, media_type="text/plain")
 
 @app.get("/conversations")
@@ -217,25 +219,12 @@ def get_conversations(user_id: str = Depends(verify_api_key)):
                 conversation_ids.add(conv["id"])
             all_conversations.extend(user_conversations)
 
-        # Also get legacy conversations (not associated with a user)
-        legacy_conversations = conversation_store.list_conversation_meta()
-        for conv in legacy_conversations:
-            if conv["id"] not in conversation_ids:
-                all_conversations.append(conv)
 
         return all_conversations
     else:
         # Get only the user's conversations
         user_conversations = conversation_store.list_conversation_meta(user_id)
 
-        # Track conversation IDs to avoid duplicates
-        conversation_ids = {conv["id"] for conv in user_conversations}
-
-        # Also get legacy conversations if they don't have a user_id
-        legacy_conversations = conversation_store.list_conversation_meta()
-        for conv in legacy_conversations:
-            if "user_id" not in conv and conv["id"] not in conversation_ids:
-                user_conversations.append(conv)
 
         return user_conversations
 
@@ -257,21 +246,8 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
     # Create conversation store
     conversation_store = ConversationStore()
 
-    # Try to load the conversation from the user's storage first
+    # Load the conversation from the user's storage
     profile = conversation_store.load_conversation(conversation_id, user_id)
-
-    # If not found, try legacy storage
-    if not profile or not profile.get("history"):
-        legacy_profile = conversation_store.load_conversation(conversation_id)
-
-        # If found in legacy storage, check if it has a user_id
-        if legacy_profile and legacy_profile.get("history"):
-            if "user_id" in legacy_profile and legacy_profile["user_id"] != user_id:
-                # Check if user has permission to view other users' conversations
-                if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, legacy_profile["user_id"]):
-                    raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
-
-            profile = legacy_profile
 
     if not profile or not profile.get("history"):
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -302,21 +278,8 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
     # Create conversation store
     conversation_store = ConversationStore()
 
-    # Try to load the conversation from the user's storage first
+    # Load the conversation from the user's storage
     profile = conversation_store.load_conversation(conversation_id, user_id)
-
-    # If not found, try legacy storage
-    if not profile or not profile.get("history"):
-        legacy_profile = conversation_store.load_conversation(conversation_id)
-
-        # If found in legacy storage, check if it has a user_id
-        if legacy_profile and legacy_profile.get("history"):
-            if "user_id" in legacy_profile and legacy_profile["user_id"] != user_id:
-                # Check if user has permission to edit other users' conversations
-                if not check_permission(user_id, Permission.EDIT_ALL_CONVERSATIONS, legacy_profile["user_id"]):
-                    raise HTTPException(status_code=403, detail="You don't have permission to modify this conversation")
-
-            profile = legacy_profile
 
     if not profile or not profile.get("history"):
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -505,14 +468,7 @@ def get_settings():
 
     # Define available LLM options
     llm_options = {
-        "ollama": [
-            "llama3",
-            "llama2",
-            "mistral",
-            "codellama",
-            "phi",
-            "gemma"
-        ],
+        "ollama": get_downloaded_models(),
         "openai": [
             "gpt-3.5-turbo",
             "gpt-4",

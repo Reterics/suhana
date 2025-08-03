@@ -1,12 +1,9 @@
-# engine/memory_store.py
 import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 
 from langchain_community.vectorstores import FAISS
 
-# The HuggingFaceEmbeddings class from langchain_community.embeddings is deprecated
-# To fix this properly, run: pip install -U langchain-huggingface
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
 except ImportError:

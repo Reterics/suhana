@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   Settings as SettingsType,
-  LLMOptions,
   UserProfile,
   UserPreferences,
   UserPersonalization,
@@ -17,7 +16,8 @@ interface SettingsProps {
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
   const {
-    getSettings,
+    settings,
+    llmOptions,
     updateSettings,
     userSession,
     login,
@@ -33,8 +33,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   } = useChat();
 
   // Settings state
-  const [settings, setSettings] = useState<SettingsType | null>(null);
-  const [llmOptions, setLlmOptions] = useState<LLMOptions | null>(null);
+  const [settingsForm, setSettingsForm] = useState<SettingsType | null>(settings);
 
   // Profile state
   const [users, setUsers] = useState<any[]>([]);
@@ -48,7 +47,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<
     'settings' | 'profile' | 'register'
   >('settings');
-  const [loading, setLoading] = useState(true);
+  const [loading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +65,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
   useEffect(() => {
     if (isOpen) {
-      void loadSettings();
       void loadUsers();
       if (userSession?.userId) {
         void loadProfileData(userSession.userId);
@@ -74,20 +72,10 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     }
   }, [isOpen, userSession]);
 
-  async function loadSettings() {
-    setLoading(true);
-    try {
-      const { settings, llm_options } = await getSettings();
-      setSettings(settings);
-      setLlmOptions(llm_options);
-      setError(null);
-    } catch (err) {
-      setError('Failed to load settings');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    setSettingsForm(settings);
+  }, [settings]);
+
 
   async function loadUsers() {
     try {
@@ -127,9 +115,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   async function handleSave() {
     setSaving(true);
     try {
-      if (activeTab === 'settings' && settings) {
-        const result = await updateSettings(settings);
-        setSettings(result.settings);
+      if (activeTab === 'settings' && settingsForm) {
+        await updateSettings(settingsForm);
         setError(null);
       } else if (activeTab === 'profile' && userSession?.userId && profile) {
         const userId = userSession.userId;
@@ -165,8 +152,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   }
 
   function handleChange(key: keyof SettingsType, value: any) {
-    if (!settings) return;
-    setSettings({ ...settings, [key]: value });
+    if (!settingsForm) return;
+    setSettingsForm({ ...settingsForm, [key]: value });
   }
 
   if (!isOpen) return null;
@@ -243,7 +230,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
         {!loading && (
           <div className="max-h-[60vh] overflow-y-auto pr-1">
-            {activeTab === 'settings' && settings && llmOptions && (
+            {activeTab === 'settings' && settingsForm && llmOptions && (
               <form
                 data-testid="settings-form"
                 onSubmit={e => {
@@ -261,7 +248,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </label>
                   <select
                     id="llm-backend"
-                    value={settings.llm_backend}
+                    value={settingsForm.llm_backend}
                     onChange={e =>
                       handleChange('llm_backend', e.currentTarget.value)
                     }
@@ -272,7 +259,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </select>
                 </div>
 
-                {settings.llm_backend === 'ollama' ? (
+                {settingsForm.llm_backend === 'ollama' ? (
                   <div>
                     <label
                       htmlFor="ollama-model"
@@ -282,7 +269,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     </label>
                     <select
                       id="ollama-model"
-                      value={settings.llm_model}
+                      value={settingsForm.llm_model}
                       onChange={e =>
                         handleChange('llm_model', e.currentTarget.value)
                       }
@@ -306,7 +293,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       </label>
                       <select
                         id="openai-model"
-                        value={settings.openai_model}
+                        value={settingsForm.openai_model}
                         onChange={e =>
                           handleChange('openai_model', e.currentTarget.value)
                         }
@@ -330,7 +317,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       <input
                         id="openai-api-key"
                         type="password"
-                        value={settings.openai_api_key || ''}
+                        value={settingsForm.openai_api_key || ''}
                         onChange={e =>
                           handleChange('openai_api_key', e.currentTarget.value)
                         }
@@ -345,7 +332,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <input
                     type="checkbox"
                     id="voice"
-                    checked={settings.voice}
+                    checked={settingsForm.voice}
                     onChange={e =>
                       handleChange('voice', e.currentTarget.checked)
                     }
@@ -360,7 +347,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <input
                     type="checkbox"
                     id="streaming"
-                    checked={settings.streaming}
+                    checked={settingsForm.streaming}
                     onChange={e =>
                       handleChange('streaming', e.currentTarget.checked)
                     }
@@ -718,7 +705,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
           <button
             type="submit"
             onClick={handleSave}
-            disabled={saving || !settings}
+            disabled={saving || !settingsForm}
             className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-900 shadow-sm disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save'}
