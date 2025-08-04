@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
-  Settings as SettingsType,
+  AppSettings,
   UserProfile,
   UserPreferences,
   UserPersonalization,
@@ -17,7 +17,6 @@ interface SettingsProps {
 export function Settings({ isOpen, onClose }: SettingsProps) {
   const {
     settings,
-    llmOptions,
     updateSettings,
     userSession,
     login,
@@ -33,7 +32,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   } = useChat();
 
   // Settings state
-  const [settingsForm, setSettingsForm] = useState<SettingsType | null>(settings);
+  const [settingsForm, setSettingsForm] = useState<AppSettings | null>(settings);
 
   // Profile state
   const [users, setUsers] = useState<any[]>([]);
@@ -151,13 +150,13 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     }
   }
 
-  function handleChange(key: keyof SettingsType, value: any) {
+  function handleChange(key: keyof AppSettings['settings'], value: any) {
     if (!settingsForm) return;
     setSettingsForm({ ...settingsForm, [key]: value });
   }
 
   if (!isOpen) return null;
-  console.error(userSession?.userId, profile, preferences, personalization, privacy);
+
   return (
     <div
       className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center"
@@ -230,7 +229,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
         {!loading && (
           <div className="max-h-[60vh] overflow-y-auto pr-1">
-            {activeTab === 'settings' && settingsForm && llmOptions && (
+            {activeTab === 'settings' && settingsForm && settings?.llm_options && (
               <form
                 data-testid="settings-form"
                 onSubmit={e => {
@@ -248,7 +247,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </label>
                   <select
                     id="llm-backend"
-                    value={settingsForm.llm_backend}
+                    value={settingsForm.settings.llm_backend}
                     onChange={e =>
                       handleChange('llm_backend', e.currentTarget.value)
                     }
@@ -259,7 +258,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </select>
                 </div>
 
-                {settingsForm.llm_backend === 'ollama' ? (
+                {settingsForm.settings.llm_backend === 'ollama' ? (
                   <div>
                     <label
                       htmlFor="ollama-model"
@@ -269,13 +268,13 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     </label>
                     <select
                       id="ollama-model"
-                      value={settingsForm.llm_model}
+                      value={settingsForm.settings.llm_model}
                       onChange={e =>
                         handleChange('llm_model', e.currentTarget.value)
                       }
                       className="w-full border border-gray-300 rounded-md px-3 py-2"
                     >
-                      {llmOptions.ollama.map(model => (
+                      {settings.llm_options.ollama.map(model => (
                         <option key={model} value={model}>
                           {model}
                         </option>
@@ -293,13 +292,13 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       </label>
                       <select
                         id="openai-model"
-                        value={settingsForm.openai_model}
+                        value={settingsForm.settings.openai_model}
                         onChange={e =>
                           handleChange('openai_model', e.currentTarget.value)
                         }
                         className="w-full border border-gray-300 rounded-md px-3 py-2"
                       >
-                        {llmOptions.openai.map(model => (
+                        {settings.llm_options.openai.map(model => (
                           <option key={model} value={model}>
                             {model}
                           </option>
@@ -317,7 +316,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       <input
                         id="openai-api-key"
                         type="password"
-                        value={settingsForm.openai_api_key || ''}
+                        value={settingsForm.settings.openai_api_key || ''}
                         onChange={e =>
                           handleChange('openai_api_key', e.currentTarget.value)
                         }
@@ -332,7 +331,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <input
                     type="checkbox"
                     id="voice"
-                    checked={settingsForm.voice}
+                    checked={settingsForm.settings.voice}
                     onChange={e =>
                       handleChange('voice', e.currentTarget.checked)
                     }
@@ -347,7 +346,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <input
                     type="checkbox"
                     id="streaming"
-                    checked={settingsForm.streaming}
+                    checked={settingsForm.settings.streaming}
                     onChange={e =>
                       handleChange('streaming', e.currentTarget.checked)
                     }

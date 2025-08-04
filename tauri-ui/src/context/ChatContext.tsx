@@ -3,7 +3,6 @@ import {
   StateUpdater,
   useContext,
   useEffect,
-  useRef,
   useState
 } from 'preact/hooks';
 import { Dispatch } from 'preact/compat';
@@ -13,14 +12,18 @@ export type ChatMessage = {
   content: string;
 };
 
-export interface Settings {
+export type SettingsType = {
   llm_backend: string;
   llm_model: string;
   openai_model: string;
   voice: boolean;
   streaming: boolean;
   openai_api_key: string;
-  [key: string]: any;
+}
+
+export type AppSettings = {
+  settings: SettingsType
+  llm_options: LLMOptions
 }
 
 export interface UserProfile {
@@ -91,11 +94,10 @@ interface ChatState {
   transcribe: (blob: Blob) => Promise<string>;
   projectMetadata: ProjectMeta | null;
   setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
-  settings: Settings | null;
-  llmOptions: LLMOptions | null;
+  settings: AppSettings | null;
   updateSettings: (
-    settings: Partial<Settings>
-  ) => Promise<{ settings: Settings }>;
+    settings: Partial<AppSettings>
+  ) => Promise<{ settings: AppSettings }>;
 
   // User session management
   userSession: UserSession | null;
@@ -161,7 +163,7 @@ async function fetchWithKey(
   maxRetries = 3,
   retryDelayMs = 1000
 ): Promise<Record<string, unknown> | null | undefined> {
-  const isGet = (options.method || 'GET').toUpperCase() === 'GET';
+  const isGet = (options.method || 'GET').toUpperCase() === 'GET' || options.method === undefined;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetch(url, {
@@ -202,9 +204,7 @@ export function ChatProvider({
     null
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
   const [userSession, setUserSession] = useState<UserSession | null>(() => {
     const storedSession = localStorage.getItem('suhana_user_session');
     if (storedSession) {
@@ -217,38 +217,33 @@ export function ChatProvider({
     }
     return null;
   });
-  const lastCheckedKey = useRef<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!userSession);
+  const apiKey = userSession?.apiKey || '';
+  const setApiKey = (key: string) => {
+    setUserSession((prev) =>
+      prev ? ({...prev, apiKey: key}) : null);
+  }
 
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [llmOptions, setLlmOptions] = useState<LLMOptions | null>(null);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
 
   const apiReady = !error && !loading;
-  // Check if we have a valid session and set the API key accordingly
-  useEffect(() => {
-    if (userSession?.apiKey && !apiKey) {
-      setApiKey(userSession.apiKey);
-    }
-    if (userSession && apiKey) {
-      void getSettings().then(({
-      llm_options,
-      settings
-    }) => {
-      setSettings(settings);
-      setLlmOptions(llm_options);
-    });
-    }
-  }, [userSession, apiKey]);
 
-  // Effect for API key changes
+  const isAuthenticated = !!userSession?.userId && !!userSession?.apiKey;
+
+  const onLoad = async () => {
+    await listConversations();
+    const settings = await getSettings();
+    setSettings(settings);
+  };
+
   useEffect(() => {
-    if (!apiKey) {
+    if (userSession && loading) {
+      onLoad().then(() => setLoading(false));
+      void listConversations();
+    } else if (!userSession && !loading) {
       setLoading(false);
-      return;
     }
-    if (apiKey === lastCheckedKey.current) return;
-    lastCheckedKey.current = apiKey;
-    void listConversations().then(() => setLoading(false));
-  }, [apiKey]);
+  }, [userSession, loading])
 
   const listConversations = async () => {
     const conversations = await fetchWithKey(
@@ -344,13 +339,10 @@ export function ChatProvider({
 
   const getSettings = async () => {
     const data = await fetchWithKey(`${BASE_URL}/settings`, apiKey, setError);
-    return {
-      settings: data?.settings as Settings,
-      llm_options: data?.llm_options as LLMOptions
-    };
+    return data as AppSettings;
   };
 
-  const updateSettings = async (settings: Partial<Settings>) => {
+  const updateSettings = async (settings: Partial<AppSettings>) => {
     const data = await fetchWithKey(`${BASE_URL}/settings`, apiKey, setError, {
       method: 'POST',
       headers: {
@@ -358,8 +350,8 @@ export function ChatProvider({
       },
       body: JSON.stringify(settings)
     });
-    setSettings(data?.settings as Settings);
-    return { settings: data?.settings as Settings };
+    setSettings(data as AppSettings);
+    return { settings: data as AppSettings };
   };
 
   // User profile management methods
@@ -508,20 +500,15 @@ export function ChatProvider({
       lastLogin: new Date()
     };
     setUserSession(session);
-    setApiKey(apiKey);
     localStorage.setItem('suhana_user_session', JSON.stringify(session));
   };
 
   // Logout method to clear the user session
   const logout = () => {
     setUserSession(null);
-    setApiKey('');
     localStorage.removeItem('suhana_user_session');
     localStorage.removeItem('suhana_key');
   };
-
-  // Computed property to check if user is authenticated
-  const isAuthenticated = !!userSession?.userId && !!userSession?.apiKey;
 
   const registerUser = async (
     username: string,
@@ -564,9 +551,7 @@ export function ChatProvider({
         messages,
         setMessages,
         apiKey,
-        setApiKey: (key: string) => {
-          setApiKey(key);
-        },
+        setApiKey,
         apiReady,
         error,
         conversationList,
@@ -578,7 +563,6 @@ export function ChatProvider({
         setProjectMetadata,
 
         settings,
-        llmOptions,
         updateSettings,
 
         // User session management

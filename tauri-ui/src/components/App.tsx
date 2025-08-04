@@ -50,7 +50,7 @@ export function App() {
   const [authModalView, setAuthModalView] = useState<'login' | 'register'>(
     'login'
   );
-console.error(apiReady, isAuthenticated)
+
   if (!apiReady) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-gray-400 text-xl">
@@ -79,7 +79,7 @@ console.error(apiReady, isAuthenticated)
     ]);
     const index = messages.length + 1;
     let text = '';
-    if (settings?.streaming) {
+    if (settings?.settings.streaming) {
       return await sendStreamingMessage(input, token => {
         text += token;
         setMessages(prev => {

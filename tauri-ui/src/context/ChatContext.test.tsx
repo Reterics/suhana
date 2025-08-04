@@ -51,39 +51,6 @@ describe('ChatContext', () => {
     );
   });
 
-  it('provides initial context and can set API key', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => []
-    }) as any;
-
-    function Consumer() {
-      const chat = useChat();
-      return (
-        <div>
-          <button onClick={() => chat.setApiKey('abc')}>SetKey</button>
-          <div data-testid="apiKey">{chat.apiKey}</div>
-        </div>
-      );
-    }
-
-    render(
-      <ChatProvider>
-        <Consumer />
-      </ChatProvider>
-    );
-    // initial: ''
-    expect(screen.getByTestId('apiKey').textContent).toBe('');
-
-    // set an API key and it should update
-    screen.getByText('SetKey').click();
-    await waitFor(() =>
-      expect(screen.getByTestId('apiKey').textContent).toBe('abc')
-    );
-    // should persist to localStorage
-    expect(localStorageMock.getItem('suhana_key')).toBe('abc');
-  });
-
   it('can load conversation and set messages/projectMetadata', async () => {
     // mock fetch for loadConversation
     globalThis.fetch = vi.fn().mockResolvedValueOnce({
