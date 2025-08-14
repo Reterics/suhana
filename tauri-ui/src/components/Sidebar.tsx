@@ -1,21 +1,22 @@
 import { JSX } from 'preact/jsx-runtime';
-import { ConversationMeta } from '../context/ChatContext.tsx';
+import { useChat } from '../context/ChatContext.tsx';
 import { Plus, X } from 'lucide-preact';
 import { useRef } from "preact/hooks";
 
 interface SidebarProps {
-  conversations: ConversationMeta[];
-  onSelectConversation?: (id: string) => void;
   hidden?: boolean;
   toggle?: () => void;
 }
 
 export default function Sidebar({
-  conversations,
-  onSelectConversation,
   hidden,
   toggle
 }: SidebarProps): JSX.Element {
+  const {
+    conversationList,
+    loadConversation,
+    addConversation,
+  } = useChat();
   const errorCount = useRef(0);
 
   const handleError: JSX.GenericEventHandler<HTMLImageElement> = (e) => {
@@ -59,20 +60,20 @@ export default function Sidebar({
 
       <div className="flex-1 overflow-y-auto space-y-1 text-sm">
         <button
-          onClick={() => onSelectConversation?.('id' + Date.now())}
+          onClick={() => addConversation()}
           className="w-full flex items-center gap-1 px-2 py-1 rounded hover:bg-neutral-100 text-gray-700 font-medium"
         >
           <Plus className="h-4 w-4" />
           New
         </button>
 
-        {conversations
+        {conversationList
           .slice()
           .reverse()
           .map(conv => (
             <button
               key={conv.id}
-              onClick={() => onSelectConversation?.(conv.id)}
+              onClick={() => loadConversation(conv.id)}
               className="w-full text-left px-2 py-1 rounded hover:bg-neutral-100 text-gray-700 truncate"
               title={conv.title || conv.id}
             >

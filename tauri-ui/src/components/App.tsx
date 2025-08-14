@@ -24,8 +24,6 @@ export function App() {
     settings,
     apiReady,
     error,
-    conversationList,
-    loadConversation,
     conversationId,
     apiKey,
     messages,
@@ -148,8 +146,6 @@ export function App() {
     <div className="flex h-screen w-screen bg-neutral-50 text-gray-800">
       {isAuthenticated && (
         <Sidebar
-          conversations={conversationList}
-          onSelectConversation={loadConversation}
           hidden={!sidebarOpen}
           toggle={() => setSidebarOpen(!sidebarOpen)}
         />

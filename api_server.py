@@ -14,12 +14,12 @@ from pydantic import BaseModel
 from engine.backends.ollama import get_downloaded_models
 from engine.engine_config import load_settings, save_settings
 from engine.agent_core import handle_input
-from engine.api_key_store import load_valid_api_keys
 from engine.di import container
 from engine.conversation_store import (
     create_new_conversation,
     load_conversation,
-    save_conversation, list_conversation_meta
+    save_conversation,
+    DEFAULT_CATEGORY
 )
 from engine.interfaces import VectorStoreManagerInterface
 from engine.utils import load_metadata
@@ -78,9 +78,9 @@ def verify_api_key(x_api_key: str = Header(...), request: Request = None):
 
 
 class QueryRequest(BaseModel):
-    input: str
+    input: str | None = None
     backend: str = "ollama"
-    conversation_id: str
+    conversation_id: str | None = None
     mode: str | None = None
     project_path: str | None = None
 
@@ -119,6 +119,11 @@ class PrivacyUpdate(BaseModel):
     allow_analytics: bool | None = None
     store_history: bool | None = None
 
+class NewConversationRequest(BaseModel):
+    category: str = DEFAULT_CATEGORY
+    input: str | None = None
+    conversation_id: str | None = None
+
 class UserRegistration(BaseModel):
     username: str
     password: str
@@ -131,6 +136,10 @@ class UserLogin(BaseModel):
 
 @app.post("/query")
 def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
+    # If conversation_id is not provided, create a new conversation
+    if req.conversation_id is None:
+        req.conversation_id = create_new_conversation(user_id)
+
     profile = load_conversation(req.conversation_id, user_id)
 
     # Check if the conversation exists and belongs to the user
@@ -145,6 +154,10 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
         from engine.security.access_control import Permission, check_permission
         if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, profile["user_id"]):
             raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+
+    # If input is not provided, return the conversation without processing
+    if req.input is None:
+        return {"response": "No input provided", "conversation_id": req.conversation_id}
 
     reply = handle_input(req.input, req.backend, profile, settings)
     save_conversation(req.conversation_id, profile, user_id)
@@ -164,6 +177,10 @@ async def transcribe(audio: UploadFile = File(...)):
 
 @app.post("/query/stream")
 def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
+    # If conversation_id is not provided, create a new conversation
+    if req.conversation_id is None:
+        req.conversation_id = create_new_conversation(user_id)
+
     profile = load_conversation(req.conversation_id, user_id)
 
     # Check if the conversation exists and belongs to the user
@@ -178,6 +195,12 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
         from engine.security.access_control import Permission, check_permission
         if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, profile["user_id"]):
             raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+
+    # If input is not provided, return a simple response
+    if req.input is None:
+        async def simple_generator():
+            yield "No input provided"
+        return StreamingResponse(simple_generator(), media_type="text/plain")
 
     generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
     save_conversation(req.conversation_id, profile, user_id)
@@ -296,6 +319,11 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
         profile["mode"] = "development"
         vectorstore_manager.get_vectorstore(profile)
 
+    # Process input if provided
+    if req.input:
+        reply = handle_input(req.input, req.backend, profile, settings)
+        save_conversation(conversation_id, profile, user_id)
+
         # Update recent projects in settings
         try:
             settings_path = Path("settings.json")
@@ -338,12 +366,13 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
         "project_metadata": profile.get("project_metadata", {})
     }
 
-@app.post("/conversations/new")
-def new_conversation(user_id: str = Depends(verify_api_key)):
+@app.post("/conversation/new")
+def new_conversation(request: NewConversationRequest = None, user_id: str = Depends(verify_api_key)):
     """
     Create a new conversation for the current user.
 
     Args:
+        request: Optional request body with category
         user_id: User ID from the API key
 
     Returns:
@@ -354,8 +383,13 @@ def new_conversation(user_id: str = Depends(verify_api_key)):
     # Create conversation store
     conversation_store = ConversationStore()
 
+    # Get category from request or use default
+    category = DEFAULT_CATEGORY
+    if request is not None:
+        category = request.category
+
     # Create new conversation with user context
-    conversation_id = conversation_store.create_new_conversation(user_id)
+    conversation_id = conversation_store.create_new_conversation(user_id, category)
 
     return {"conversation_id": conversation_id, "user_id": user_id}
 

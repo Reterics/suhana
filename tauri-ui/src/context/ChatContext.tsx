@@ -91,6 +91,7 @@ interface ChatState {
   ) => Promise<void>;
   conversationList: ConversationMeta[];
   loadConversation: (id: string) => Promise<void>;
+  addConversation: () => Promise<void>;
   transcribe: (blob: Blob) => Promise<string>;
   projectMetadata: ProjectMeta | null;
   setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
@@ -268,6 +269,27 @@ export function ChatProvider({
     setMessages((data?.history as ChatMessage[]) || []);
     setProjectMetadata((data?.project_metadata as ProjectMeta) || null);
   };
+
+  const addConversation = async () => {
+    const data = await fetchWithKey(
+      `${BASE_URL}/conversation/new`,
+      apiKey,
+      setError,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      }
+    )
+    if (data && data.conversation_id) {
+      setConversationId(data.conversation_id as string);
+      setMessages([]);
+      setProjectMetadata(null);
+      void listConversations();
+    }
+  }
 
   const sendMessage = async (
     input: string,
@@ -556,6 +578,7 @@ export function ChatProvider({
         error,
         conversationList,
         loadConversation,
+        addConversation,
         sendMessage,
         sendStreamingMessage,
         transcribe,
