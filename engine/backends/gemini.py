@@ -63,8 +63,11 @@ def query_gemini(prompt, system_prompt, profile, settings, force_stream):
     _setup_genai(api_key)
     model_obj = genai.GenerativeModel(model)
 
+    # Add user message to history immediately
+    profile["history"].append({"role": "user", "content": prompt})
+
+    # Split history for context building
     old, recent = profile["history"][:-20], profile["history"][-20:]
-    recent.append({"role": "user", "content": prompt})
 
     if old:
         summary = summarize_history_gemini(old, api_key, model)
@@ -86,18 +89,14 @@ def query_gemini(prompt, system_prompt, profile, settings, force_stream):
                 token = chunk.text
                 stream_reply += token
                 yield token
-            profile["history"].extend([
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": stream_reply}
-            ])
+            # Only add assistant's reply since user's message was already added
+            profile["history"].append({"role": "assistant", "content": stream_reply})
 
         # Wrap the generator with error handling
         return handle_streaming_errors("Gemini", stream_generator)()
     else:
         response = model_obj.generate_content(text)
         reply = response.text.strip()
-        profile["history"].extend([
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": reply}
-        ])
+        # Only add assistant's reply since user's message was already added
+        profile["history"].append({"role": "assistant", "content": reply})
         return reply

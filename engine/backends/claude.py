@@ -55,8 +55,11 @@ def query_claude(prompt, system_prompt, profile, settings, force_stream):
     if force_stream:
         stream = True
 
+    # Add user message to history immediately
+    profile["history"].append({"role": "user", "content": prompt})
+
+    # Split history for context building
     old, recent = profile["history"][:-20], profile["history"][-20:]
-    recent.append({"role": "user", "content": prompt})
 
     if old:
         summary = summarize_history_claude(old, client, model)
@@ -85,10 +88,8 @@ def query_claude(prompt, system_prompt, profile, settings, force_stream):
                 token_text = token.text if token else ""
                 stream_reply += token_text
                 yield token_text
-            profile["history"].extend([
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": stream_reply}
-            ])
+            # Only add assistant's reply since user's message was already added
+            profile["history"].append({"role": "assistant", "content": stream_reply})
 
         # Wrap the generator with error handling
         return handle_streaming_errors("Claude", stream_generator)()
@@ -103,8 +104,6 @@ def query_claude(prompt, system_prompt, profile, settings, force_stream):
             reply = response.content[0].text.strip()
         else:
             reply = ""
-        profile["history"].extend([
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": reply}
-        ])
+        # Only add assistant's reply since user's message was already added
+        profile["history"].append({"role": "assistant", "content": reply})
         return reply

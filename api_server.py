@@ -134,17 +134,27 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
-@app.post("/query")
-def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
+def _get_conversation_profile(conversation_id: str, user_id: str):
+    """
+    Get or create a conversation profile.
+
+    Args:
+        conversation_id: ID of the conversation to get or create
+        user_id: User ID from the API key
+
+    Returns:
+        Tuple of (conversation_id, profile)
+    """
     # If conversation_id is not provided, create a new conversation
-    if req.conversation_id is None:
-        req.conversation_id = create_new_conversation(user_id)
-
-    profile = load_conversation(req.conversation_id, user_id)
-
-    # Check if the conversation exists and belongs to the user
-    if not profile:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    if conversation_id is None:
+        conversation_id = create_new_conversation(user_id)
+        # Initialize with empty profile to avoid 404 error
+        profile = {"history": [], "user_id": user_id}
+    else:
+        profile = load_conversation(conversation_id, user_id)
+        # Check if the conversation exists and belongs to the user
+        if not profile:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Add or verify user context in the conversation
     if "user_id" not in profile:
@@ -154,6 +164,17 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
         from engine.security.access_control import Permission, check_permission
         if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, profile["user_id"]):
             raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+
+    # Ensure profile has a history field
+    if "history" not in profile:
+        profile["history"] = []
+
+    return conversation_id, profile
+
+@app.post("/query")
+def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
+    # Get or create conversation profile
+    req.conversation_id, profile = _get_conversation_profile(req.conversation_id, user_id)
 
     # If input is not provided, return the conversation without processing
     if req.input is None:
@@ -177,24 +198,8 @@ async def transcribe(audio: UploadFile = File(...)):
 
 @app.post("/query/stream")
 def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
-    # If conversation_id is not provided, create a new conversation
-    if req.conversation_id is None:
-        req.conversation_id = create_new_conversation(user_id)
-
-    profile = load_conversation(req.conversation_id, user_id)
-
-    # Check if the conversation exists and belongs to the user
-    if not profile:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # Add or verify user context in the conversation
-    if "user_id" not in profile:
-        profile["user_id"] = user_id
-    elif profile["user_id"] != user_id:
-        # Check if user has permission to access other users' conversations
-        from engine.security.access_control import Permission, check_permission
-        if not check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS, profile["user_id"]):
-            raise HTTPException(status_code=403, detail="You don't have permission to access this conversation")
+    # Get or create conversation profile
+    req.conversation_id, profile = _get_conversation_profile(req.conversation_id, user_id)
 
     # If input is not provided, return a simple response
     if req.input is None:
@@ -203,8 +208,16 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
         return StreamingResponse(simple_generator(), media_type="text/plain")
 
     generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
-    save_conversation(req.conversation_id, profile, user_id)
-    return StreamingResponse(generator, media_type="text/plain")
+
+    def saving_generator():
+        save_conversation(req.conversation_id, profile, user_id)
+
+        for token in generator:
+            yield token
+
+        save_conversation(req.conversation_id, profile, user_id)
+
+    return StreamingResponse(saving_generator(), media_type="text/plain")
 
 @app.get("/conversations")
 def get_conversations(user_id: str = Depends(verify_api_key)):
@@ -269,15 +282,22 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
     # Create conversation store
     conversation_store = ConversationStore()
 
-    # Load the conversation from the user's storage
-    profile = conversation_store.load_conversation(conversation_id, user_id)
-
-    if not profile or not profile.get("history"):
+    # Check if the conversation exists
+    path = conversation_store.get_conversation_path(conversation_id, user_id)
+    if not path.exists():
         raise HTTPException(status_code=404, detail="Conversation not found")
+    else:
+        # Load the conversation from the user's storage
+        profile = conversation_store.load_conversation(conversation_id, user_id)
+        if not profile or not profile.get("history"):
+            # Initialize with empty profile if the conversation exists but has no history
+            profile = {"history": [], "user_id": user_id}
 
     # Add project metadata if available
-    if "project_path" in profile:
-        profile["project_metadata"] = load_metadata(profile["project_path"])
+    if "project_path" in profile and profile["project_path"] is not None:
+        metadata = load_metadata(profile["project_path"])
+        if metadata is not None:
+            profile["project_metadata"] = metadata
 
     return profile
 
@@ -352,7 +372,7 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
             pass
 
     # Get project metadata if available
-    if "project_path" in profile:
+    if "project_path" in profile and profile["project_path"] is not None:
         profile["project_metadata"] = load_metadata(profile["project_path"])
 
     # Save the conversation with user context

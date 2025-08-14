@@ -42,8 +42,11 @@ def query_openai(prompt, system_prompt, profile, settings, force_stream):
     if force_stream:
         stream = True
 
+    # Add user message to history immediately
+    profile["history"].append({"role": "user", "content": prompt})
+
+    # Split history for context building
     old, recent = profile["history"][:-20], profile["history"][-20:]
-    recent.append({"role": "user", "content": prompt})
 
     if old:
         summary = summarize_history(old, client, model)
@@ -61,12 +64,14 @@ def query_openai(prompt, system_prompt, profile, settings, force_stream):
                 token = chunk.choices[0].delta.content or ""
                 stream_reply += token
                 yield token
-            profile["history"].extend([{"role": "user", "content": prompt}, {"role": "assistant", "content": stream_reply}])
+            # Only add assistant's reply since user's message was already added
+            profile["history"].append({"role": "assistant", "content": stream_reply})
 
         # Wrap the generator with error handling
         return handle_streaming_errors("OpenAI", stream_generator)()
     else:
         response = client.chat.completions.create(model=model, messages=trimmed, temperature=0.7)
         reply = response.choices[0].message.content.strip()
-        profile["history"].extend([{"role": "user", "content": prompt}, {"role": "assistant", "content": reply}])
+        # Only add assistant's reply since user's message was already added
+        profile["history"].append({"role": "assistant", "content": reply})
         return reply
