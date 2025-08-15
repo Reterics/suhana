@@ -59,7 +59,7 @@ class ApiKeyManager:
                     "id": "dev",
                     "username": "developer",
                     "password_hash": None,
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": datetime.now().replace(tzinfo=None).isoformat(),
                     "profile": {}
                 })
 

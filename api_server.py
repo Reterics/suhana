@@ -16,10 +16,8 @@ from engine.engine_config import load_settings, save_settings
 from engine.agent_core import handle_input
 from engine.di import container
 from engine.conversation_store import (
-    create_new_conversation,
-    load_conversation,
-    save_conversation,
-    DEFAULT_CATEGORY
+    DEFAULT_CATEGORY,
+    conversation_store
 )
 from engine.interfaces import VectorStoreManagerInterface
 from engine.utils import load_metadata
@@ -147,11 +145,11 @@ def _get_conversation_profile(conversation_id: str, user_id: str):
     """
     # If conversation_id is not provided, create a new conversation
     if conversation_id is None:
-        conversation_id = create_new_conversation(user_id)
+        conversation_id = conversation_store.create_new_conversation(user_id)
         # Initialize with empty profile to avoid 404 error
         profile = {"history": [], "user_id": user_id}
     else:
-        profile = load_conversation(conversation_id, user_id)
+        profile = conversation_store.load_conversation(conversation_id, user_id)
         # Check if the conversation exists and belongs to the user
         if not profile:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -181,7 +179,7 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
         return {"response": "No input provided", "conversation_id": req.conversation_id}
 
     reply = handle_input(req.input, req.backend, profile, settings)
-    save_conversation(req.conversation_id, profile, user_id)
+    conversation_store.save_conversation(req.conversation_id, profile, user_id)
     return {"response": reply}
 
 @app.post("/transcribe")
@@ -198,10 +196,7 @@ async def transcribe(audio: UploadFile = File(...)):
 
 @app.post("/query/stream")
 def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
-    # Get or create conversation profile
     req.conversation_id, profile = _get_conversation_profile(req.conversation_id, user_id)
-
-    # If input is not provided, return a simple response
     if req.input is None:
         async def simple_generator():
             yield "No input provided"
@@ -210,12 +205,12 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
     generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
 
     def saving_generator():
-        save_conversation(req.conversation_id, profile, user_id)
-
-        for token in generator:
-            yield token
-
-        save_conversation(req.conversation_id, profile, user_id)
+        conversation_store.save_conversation(req.conversation_id, profile, user_id)  # save after user message
+        try:
+            for token in generator:
+                yield token
+        finally:
+            conversation_store.save_conversation(req.conversation_id, profile, user_id)  # always save assistant part
 
     return StreamingResponse(saving_generator(), media_type="text/plain")
 
@@ -231,38 +226,39 @@ def get_conversations(user_id: str = Depends(verify_api_key)):
         List of conversation metadata
     """
     from engine.security.access_control import Permission, check_permission
-    from engine.conversation_store import ConversationStore
+    import concurrent.futures
 
-    # Create conversation store
-    conversation_store = ConversationStore()
     # Check if user has permission to view all conversations
     if check_permission(user_id, Permission.VIEW_ALL_CONVERSATIONS):
         # Get all conversations from all users
         all_conversations = []
         conversation_ids = set()
 
-        # Get list of all users
-        from engine.user_manager import UserManager
-        user_manager = UserManager()
         users = user_manager.list_users()
 
-        # Get conversations for each user
-        for user in users:
+        # Function to get conversations for a user
+        def get_user_conversations(user):
             user_conversations = conversation_store.list_conversation_meta(user["id"])
-            for conv in user_conversations:
-                conv["user_id"] = user["id"]
-                conv["user_name"] = user.get("name", user["id"])
-                conversation_ids.add(conv["id"])
-            all_conversations.extend(user_conversations)
+            for conversation in user_conversations:
+                conversation["user_id"] = user["id"]
+                conversation["user_name"] = user.get("name", user["id"])
+            return user_conversations
 
+        # Use ThreadPoolExecutor to process users concurrently
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Process users in batches to avoid creating too many threads
+            batch_size = 10
+            for i in range(0, len(users), batch_size):
+                user_batch = users[i:i+batch_size]
+                for user_convs in executor.map(get_user_conversations, user_batch):
+                    for conv in user_convs:
+                        conversation_ids.add(conv["id"])
+                    all_conversations.extend(user_convs)
 
         return all_conversations
     else:
         # Get only the user's conversations
-        user_conversations = conversation_store.list_conversation_meta(user_id)
-
-
-        return user_conversations
+        return conversation_store.list_conversation_meta(user_id)
 
 @app.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key)):
@@ -276,52 +272,46 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
     Returns:
         Conversation data
     """
-    from engine.security.access_control import Permission, check_permission
-    from engine.conversation_store import ConversationStore
 
-    # Create conversation store
-    conversation_store = ConversationStore()
+    # Check if the conversation exists using a more efficient approach
+    # Load the conversation directly (it will use cache if available)
+    profile = conversation_store.load_conversation(conversation_id, user_id)
 
-    # Check if the conversation exists
-    path = conversation_store.get_conversation_path(conversation_id, user_id)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    else:
-        # Load the conversation from the user's storage
-        profile = conversation_store.load_conversation(conversation_id, user_id)
-        if not profile or not profile.get("history"):
-            # Initialize with empty profile if the conversation exists but has no history
-            profile = {"history": [], "user_id": user_id}
+    if not profile or not profile.get("history"):
+        # Check if the file exists before returning 404
+        path = conversation_store.get_conversation_path(conversation_id, user_id)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        # Initialize with empty profile if the conversation exists but has no history
+        profile = {"history": [], "user_id": user_id}
 
-    # Add project metadata if available
-    if "project_path" in profile and profile["project_path"] is not None:
-        metadata = load_metadata(profile["project_path"])
-        if metadata is not None:
-            profile["project_metadata"] = metadata
+    # Add project metadata if available and not already in the profile
+    if "project_path" in profile and profile["project_path"] is not None and "project_metadata" not in profile:
+        # Use a cache for project metadata to avoid loading it repeatedly
+        project_path = profile["project_path"]
+        # Create a simple in-memory cache for project metadata
+        if not hasattr(get_conversation, '_project_metadata_cache'):
+            get_conversation._project_metadata_cache = {}
+
+        if project_path in get_conversation._project_metadata_cache:
+            profile["project_metadata"] = get_conversation._project_metadata_cache[project_path]
+        else:
+            metadata = load_metadata(project_path)
+            if metadata is not None:
+                get_conversation._project_metadata_cache[project_path] = metadata
+                profile["project_metadata"] = metadata
 
     return profile
 
 
 @app.post("/conversations/{conversation_id}")
 def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = Depends(verify_api_key)):
-    """
-    Update a conversation's properties.
-
-    Args:
-        conversation_id: ID of the conversation to update
-        req: Request containing the updates
-        user_id: User ID from the API key
-
-    Returns:
-        Updated conversation data
-    """
-    from engine.security.access_control import Permission, check_permission
+    """Update a conversation's properties."""
     from engine.conversation_store import ConversationStore
 
-    # Create conversation store
-    conversation_store = ConversationStore()
-
-    # Load the conversation from the user's storage
+    conv_path = conversation_store.get_conversation_path(conversation_id, user_id)
+    if not conv_path.exists():
+        raise HTTPException(status_code=404, detail="Conversation not found")
     profile = conversation_store.load_conversation(conversation_id, user_id)
 
     if not profile or not profile.get("history"):
@@ -342,7 +332,7 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
     # Process input if provided
     if req.input:
         reply = handle_input(req.input, req.backend, profile, settings)
-        save_conversation(conversation_id, profile, user_id)
+        conversation_store.save_conversation(conversation_id, profile, user_id)
 
         # Update recent projects in settings
         try:
@@ -385,33 +375,6 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
         "project_path": profile.get("project_path"),
         "project_metadata": profile.get("project_metadata", {})
     }
-
-@app.post("/conversation/new")
-def new_conversation(request: NewConversationRequest = None, user_id: str = Depends(verify_api_key)):
-    """
-    Create a new conversation for the current user.
-
-    Args:
-        request: Optional request body with category
-        user_id: User ID from the API key
-
-    Returns:
-        Dictionary containing the new conversation ID
-    """
-    from engine.conversation_store import ConversationStore
-
-    # Create conversation store
-    conversation_store = ConversationStore()
-
-    # Get category from request or use default
-    category = DEFAULT_CATEGORY
-    if request is not None:
-        category = request.category
-
-    # Create new conversation with user context
-    conversation_id = conversation_store.create_new_conversation(user_id, category)
-
-    return {"conversation_id": conversation_id, "user_id": user_id}
 
 @app.get("/health")
 def health():

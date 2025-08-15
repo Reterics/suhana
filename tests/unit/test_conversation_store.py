@@ -9,11 +9,10 @@ from engine.conversation_store import (
     get_conversation_meta_path,
     list_conversations,
     list_conversation_meta,
-    load_conversation,
-    save_conversation,
-    create_new_conversation,
-    CONVERSATION_DIR
+    CONVERSATION_DIR, ConversationStore
 )
+
+conversation_store = ConversationStore()
 
 @pytest.fixture
 def mock_profile_meta():
@@ -138,7 +137,7 @@ def test_load_conversation_existing(mock_profile_meta):
 
     with patch("pathlib.Path.exists", return_value=True), \
          patch("builtins.open", mock_open(read_data=json.dumps(conversation_data))):
-        result = load_conversation(conversation_id)
+        result = conversation_store.load_conversation(conversation_id)
 
         assert result["history"] == conversation_data["history"]
         assert result["name"] == mock_profile_meta["name"]
@@ -150,7 +149,7 @@ def test_load_conversation_nonexistent(mock_profile_meta):
     conversation_id = "nonexistent-conv"
 
     with patch("pathlib.Path.exists", return_value=False):
-        result = load_conversation(conversation_id)
+        result = conversation_store.load_conversation(conversation_id)
 
         assert result["history"] == []
         assert result["name"] == mock_profile_meta["name"]
@@ -180,7 +179,7 @@ def test_save_conversation():
     with patch("builtins.open", mock_file), \
          patch("engine.conversation_store.datetime", mock_datetime):
 
-        save_conversation(conversation_id, profile)
+        conversation_store.save_conversation(conversation_id, profile)
 
         # Check that open was called twice (once for each file)
         assert mock_file.call_count == 2
@@ -217,7 +216,7 @@ def test_save_conversation_empty_title():
     with patch("builtins.open", mock_file), \
          patch("engine.conversation_store.datetime", mock_datetime):
 
-        save_conversation(conversation_id, profile)
+        conversation_store.save_conversation(conversation_id, profile)
 
         # Check that open was called twice (once for each file)
         assert mock_file.call_count == 2
@@ -244,12 +243,12 @@ def test_save_conversation_invalid_history():
     }
 
     with pytest.raises(ValueError, match="Conversation history must be a list"):
-        save_conversation(conversation_id, profile)
+        conversation_store.save_conversation(conversation_id, profile)
 
 def test_create_new_conversation(mock_uuid):
     """Test creating a new conversation."""
     with patch("engine.conversation_store.save_conversation") as mock_save:
-        conversation_id = create_new_conversation()
+        conversation_id = conversation_store.create_new_conversation("test-id")
 
         assert conversation_id == "test-uuid-1234"
         mock_save.assert_called_once_with("test-uuid-1234", {"history": []})

@@ -6,6 +6,7 @@ import {
   useState
 } from 'preact/hooks';
 import { Dispatch } from 'preact/compat';
+import { v4 } from 'uuid';
 
 export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
@@ -271,24 +272,22 @@ export function ChatProvider({
   };
 
   const addConversation = async () => {
-    const data = await fetchWithKey(
-      `${BASE_URL}/conversation/new`,
-      apiKey,
-      setError,
+    setConversationId(v4());
+    setMessages([]);
+    setProjectMetadata(null);
+  }
+
+  const addTemporaryConversation = (input: string) => {
+    const isoNow = new Date().toISOString().substring(0, 23);
+    setConversationList([
+      ...conversationList,
       {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({})
+        title: input.substring(0, 15) + (input.length > 15 ? '...' : ''),
+        last_updated: isoNow,
+        created: isoNow,
+        id: conversationId
       }
-    )
-    if (data && data.conversation_id) {
-      setConversationId(data.conversation_id as string);
-      setMessages([]);
-      setProjectMetadata(null);
-      void listConversations();
-    }
+    ])
   }
 
   const sendMessage = async (
@@ -310,6 +309,9 @@ export function ChatProvider({
         project_path
       })
     });
+    if (messages.length === 0) {
+      addTemporaryConversation(input)
+    }
     return data?.response as string;
   };
 
@@ -336,6 +338,9 @@ export function ChatProvider({
     });
     const reader = res.body?.getReader();
     const decoder = new TextDecoder('utf-8');
+    if (messages.length === 0) {
+      addTemporaryConversation(input)
+    }
     while (reader) {
       const { value, done } = await reader.read();
       if (done) break;

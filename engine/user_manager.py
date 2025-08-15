@@ -1,6 +1,4 @@
 import json
-import os
-import uuid
 import hashlib
 import secrets
 import logging
@@ -116,7 +114,7 @@ class UserManager:
         # Create user profile
         profile = self.DEFAULT_PROFILE.copy()
         profile["name"] = name or username
-        profile["created_at"] = datetime.now().isoformat()
+        profile["created_at"] = datetime.now().replace(tzinfo=None).isoformat()
         profile["role"] = role if role in self.ROLES else "user"
 
         # Hash the password
@@ -131,7 +129,7 @@ class UserManager:
             "username": username,
             "password_hash": password_hash,
             "salt": salt,  # Store salt in the profile for password verification
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now().replace(tzinfo=None).isoformat(),
             "profile": json.dumps(profile)
         }
 
@@ -167,7 +165,7 @@ class UserManager:
             password: Password to verify
 
         Returns:
-            Tuple of (success, session_token or None)
+            Tuple of (success, session_token, or None)
         """
         try:
             # Get user from database
@@ -465,13 +463,13 @@ class UserManager:
             if user:
                 # Update last_login in database
                 self.db.update_user(user_id, {
-                    "last_login": datetime.now().isoformat()
+                    "last_login": datetime.now().replace(tzinfo=None).isoformat()
                 })
 
                 # Also update profile for consistency
                 profile = user["profile"] if isinstance(user["profile"], dict) else json.loads(user["profile"])
 
-                profile["last_login"] = datetime.now().isoformat()
+                profile["last_login"] = datetime.now().replace(tzinfo=None).isoformat()
 
                 self.db.update_user(user_id, {
                     "profile": json.dumps(profile)
@@ -515,133 +513,53 @@ class UserManager:
 
         return profile.get("avatar")
 
-    def update_preferences(self, user_id: str, preferences: Dict[str, Any]) -> bool:
-        """
-        Update a user's preferences.
+    def _ensure_profile_section(self, profile: Dict[str, Any], section: str) -> None:
+        """Ensure a section exists in the given profile."""
+        if section not in profile:
+            profile[section] = self.DEFAULT_PROFILE[section].copy()
 
-        Args:
-            user_id: User ID to update preferences for
-            preferences: Dictionary containing preference updates
 
-        Returns:
-            True if preferences were updated successfully, False otherwise
-        """
+    def _update_profile_section(self, user_id: str, section: str, updates: Dict[str, Any]) -> bool:
+        """Generic method to update a specific section of a user's profile."""
         profile = self.get_profile(user_id)
-
         if not profile:
             return False
-
-        # Ensure preferences section exists
-        if "preferences" not in profile:
-            profile["preferences"] = self.DEFAULT_PROFILE["preferences"]
-
-        # Update only the specified preferences
-        for key, value in preferences.items():
-            profile["preferences"][key] = value
-
+        self._ensure_profile_section(profile, section)
+        for key, value in updates.items():
+            profile[section][key] = value
         return self.save_profile(user_id, profile)
 
+    def update_preferences(self, user_id: str, preferences: Dict[str, Any]) -> bool:
+        """Update a user's preferences."""
+        return self._update_profile_section(user_id, "preferences", preferences)
+
     def get_preferences(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get a user's preferences.
-
-        Args:
-            user_id: User ID to get preferences for
-
-        Returns:
-            Dictionary containing user preferences, or empty dict if user doesn't exist
-        """
+        """Get a user's preferences."""
         profile = self.get_profile(user_id)
-
         if not profile:
             return {}
-
         return profile.get("preferences", {})
 
     def update_personalization(self, user_id: str, personalization: Dict[str, Any]) -> bool:
-        """
-        Update a user's personalization settings.
-
-        Args:
-            user_id: User ID to update personalization for
-            personalization: Dictionary containing personalization updates
-
-        Returns:
-            True if personalization was updated successfully, False otherwise
-        """
-        profile = self.get_profile(user_id)
-
-        if not profile:
-            return False
-
-        # Ensure personalization section exists
-        if "personalization" not in profile:
-            profile["personalization"] = self.DEFAULT_PROFILE["personalization"]
-
-        # Update only the specified personalization settings
-        for key, value in personalization.items():
-            profile["personalization"][key] = value
-
-        return self.save_profile(user_id, profile)
+        """Update a user's personalization settings."""
+        return self._update_profile_section(user_id, "personalization", personalization)
 
     def get_personalization(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get a user's personalization settings.
-
-        Args:
-            user_id: User ID to get personalization for
-
-        Returns:
-            Dictionary containing user personalization, or empty dict if user doesn't exist
-        """
+        """Get a user's personalization settings."""
         profile = self.get_profile(user_id)
-
         if not profile:
             return {}
-
         return profile.get("personalization", {})
 
     def update_privacy_settings(self, user_id: str, privacy_settings: Dict[str, Any]) -> bool:
-        """
-        Update a user's privacy settings.
-
-        Args:
-            user_id: User ID to update privacy settings for
-            privacy_settings: Dictionary containing privacy setting updates
-
-        Returns:
-            True if privacy settings were updated successfully, False otherwise
-        """
-        profile = self.get_profile(user_id)
-
-        if not profile:
-            return False
-
-        # Ensure privacy section exists
-        if "privacy" not in profile:
-            profile["privacy"] = self.DEFAULT_PROFILE["privacy"]
-
-        # Update only the specified privacy settings
-        for key, value in privacy_settings.items():
-            profile["privacy"][key] = value
-
-        return self.save_profile(user_id, profile)
+        """Update a user's privacy settings."""
+        return self._update_profile_section(user_id, "privacy", privacy_settings)
 
     def get_privacy_settings(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get a user's privacy settings.
-
-        Args:
-            user_id: User ID to get privacy settings for
-
-        Returns:
-            Dictionary containing user privacy settings, or empty dict if user doesn't exist
-        """
+        """Get a user's privacy settings."""
         profile = self.get_profile(user_id)
-
         if not profile:
             return {}
-
         return profile.get("privacy", {})
 
     def add_interest(self, user_id: str, interest: str) -> bool:
@@ -738,7 +656,7 @@ class UserManager:
                 "profile": profile,
                 "settings": settings,
                 "conversations": conversations,
-                "export_date": datetime.now().isoformat()
+                "export_date": datetime.now().replace(tzinfo=None).isoformat()
             }
 
             return True, export_data
