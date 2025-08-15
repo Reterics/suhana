@@ -356,6 +356,20 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     Enable Streaming
                   </label>
                 </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="secured_streaming"
+                    checked={settingsForm.settings.secured_streaming}
+                    onChange={e =>
+                      handleChange('streaming', e.currentTarget.checked)
+                    }
+                    className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded"
+                  />
+                  <label htmlFor="secured_streaming" className="text-sm text-gray-700">
+                    Enable Secured Streaming
+                  </label>
+                </div>
               </form>
             )}
 

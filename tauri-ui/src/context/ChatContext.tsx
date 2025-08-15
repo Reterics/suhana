@@ -7,6 +7,7 @@ import {
 } from 'preact/hooks';
 import { Dispatch } from 'preact/compat';
 import { v4 } from 'uuid';
+import {consumeEncryptedStream} from "../utils/client-stream.ts";
 
 export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
@@ -19,6 +20,7 @@ export type SettingsType = {
   openai_model: string;
   voice: boolean;
   streaming: boolean;
+  secured_streaming: boolean;
   openai_api_key: string;
 }
 
@@ -86,6 +88,11 @@ interface ChatState {
   setMessages: Dispatch<StateUpdater<ChatMessage[]>>;
   sendMessage: (input: string, backend?: string) => Promise<string>;
   sendStreamingMessage: (
+    input: string,
+    onToken: (token: string) => void,
+    backend?: string
+  ) => Promise<void>;
+  sendSecuredStreamingMessage: (
     input: string,
     onToken: (token: string) => void,
     backend?: string
@@ -348,6 +355,31 @@ export function ChatProvider({
     }
   };
 
+  const sendSecuredStreamingMessage = (
+    input: string,
+    onToken: (token: string) => void,
+    backend = 'ollama',
+    mode?: string,
+    project_path?: string
+  )=> {
+    if (messages.length === 0) {
+      addTemporaryConversation(input)
+    }
+    return consumeEncryptedStream(
+      `${BASE_URL}/query/secure_stream`,
+      apiKey,
+      conversationId,
+      onToken,
+      JSON.stringify({
+        input,
+        backend,
+        conversation_id: conversationId,
+        mode,
+        project_path
+      })
+    )
+  }
+
   const transcribe = async (blob: Blob): Promise<string> => {
     const form = new FormData();
     form.append('audio', blob, 'speech.webm');
@@ -586,6 +618,7 @@ export function ChatProvider({
         addConversation,
         sendMessage,
         sendStreamingMessage,
+        sendSecuredStreamingMessage,
         transcribe,
         projectMetadata,
         setProjectMetadata,

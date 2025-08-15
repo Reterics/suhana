@@ -30,6 +30,7 @@ export function App() {
     setMessages,
     sendMessage,
     sendStreamingMessage,
+    sendSecuredStreamingMessage,
     projectMetadata,
     setProjectMetadata,
     isAuthenticated,
@@ -77,6 +78,19 @@ export function App() {
     ]);
     const index = messages.length + 1;
     let text = '';
+    if (settings?.settings.secured_streaming) {
+      return await sendSecuredStreamingMessage(input, token => {
+        text += token;
+        setMessages(prev => {
+          const copy = [...prev];
+          copy[index] = {
+            role: 'assistant',
+            content: text
+          };
+          return copy;
+        });
+      })
+    }
     if (settings?.settings.streaming) {
       return await sendStreamingMessage(input, token => {
         text += token;

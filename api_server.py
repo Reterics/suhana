@@ -1,3 +1,4 @@
+import json
 import tempfile
 from pathlib import Path
 
@@ -11,7 +12,16 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from fastapi import Depends, Header, Request
+from fastapi.responses import StreamingResponse
+
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey, X25519PublicKey,
+)
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
 from engine.backends.ollama import get_downloaded_models
+from engine.crypto_query import _b64d, _derive_aes256_gcm, _ndjson_encrypted_stream, _b64u
 from engine.engine_config import load_settings, save_settings
 from engine.agent_core import handle_input
 from engine.di import container
@@ -213,6 +223,84 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
             conversation_store.save_conversation(req.conversation_id, profile, user_id)  # always save assistant part
 
     return StreamingResponse(saving_generator(), media_type="text/plain")
+
+@app.post("/query/secure_stream")
+async def query_stream(
+    req: "QueryRequest",
+    request: Request,
+    user_id: str = Depends(verify_api_key),
+    x_client_pubkey: str | None = Header(default=None, alias="X-Client-PubKey"),
+):
+    # keep your conversation/profile handling
+    req.conversation_id, profile = _get_conversation_profile(req.conversation_id, user_id)
+
+    # If client did not provide a pubkey, fall back to plaintext streaming for compatibility
+    transport_encrypt = x_client_pubkey is not None
+
+    if req.input is None:
+        async def simple_generator():
+            yield "No input provided"
+        media_type = "application/x-ndjson" if transport_encrypt else "text/plain"
+        return StreamingResponse(simple_generator(), media_type=media_type)
+
+    # Your existing token generator (sync iterator)
+    generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
+
+    def saving_iter():
+        # save after user message
+        conversation_store.save_conversation(req.conversation_id, profile, user_id)
+        try:
+            for token in generator:
+                yield token
+        finally:
+            # always save assistant part
+            conversation_store.save_conversation(req.conversation_id, profile, user_id)
+
+    if not transport_encrypt:
+        # Original plaintext behavior
+        return StreamingResponse(saving_iter(), media_type="text/plain")
+
+    # --- Transport-layer encryption setup (server side) ---
+    # 1) Parse client's ephemeral X25519 pubkey (raw 32 bytes in base64)
+    client_raw = _b64d(x_client_pubkey)
+    client_pub = X25519PublicKey.from_public_bytes(client_raw)
+
+    # 2) Generate server ephemeral key & derive shared secret
+    server_priv = X25519PrivateKey.generate()
+    server_pub_raw = server_priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)  # raw 32B
+    shared = server_priv.exchange(client_pub)  # 32B shared secret
+
+    aesgcm = _derive_aes256_gcm(shared, req.conversation_id)
+
+    async def encrypted_stream():
+        # First line: send server's ephemeral pubkey so client can derive same AES key
+        first = {"type": "server_pubkey", "pubkey": _b64u(server_pub_raw)}
+        yield json.dumps(first, separators=(",", ":")) + "\n"
+
+        async for line in _ndjson_encrypted_stream(
+                req.conversation_id,
+                saving_iter(),
+                aesgcm,
+                max_tokens=20,
+                max_bytes=2048,
+                max_delay_ms=40,
+        ):
+            yield line
+
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        # disables nginx proxy buffering:
+        "X-Accel-Buffering": "no",
+        # Keep the connection open
+        "Connection": "keep-alive",
+        # Optional: disables Chrome’s MIME sniffing that can delay display
+        "X-Content-Type-Options": "nosniff",
+        "Content-Encoding": "identity"
+    }
+
+    return StreamingResponse(encrypted_stream(), media_type="application/x-ndjson", headers=headers)
 
 @app.get("/conversations")
 def get_conversations(user_id: str = Depends(verify_api_key)):
