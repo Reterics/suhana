@@ -45,9 +45,11 @@ export function Settings({ onClose }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<
     'settings' | 'profile' | 'register'
   >('settings');
-  const [loading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const streaming = settingsForm?.settings.streaming && !settingsForm?.settings.secured_streaming;
+  const secured_streaming = settingsForm?.settings.secured_streaming;
 
   // Registration state
   /*const [registrationForm, setRegistrationForm] = useState({
@@ -62,8 +64,10 @@ export function Settings({ onClose }: SettingsProps) {
   } | null>(null);*/
 
   useEffect(() => {
-     void loadUsers();
-  }, []);
+    if (profile?.role === 'admin') {
+      void loadUsers();
+    }
+  }, [profile]);
 
   useEffect(() => {
       if (userSession?.userId) {
@@ -152,10 +156,15 @@ export function Settings({ onClose }: SettingsProps) {
 
   function handleChange(key: keyof AppSettings['settings'], value: any) {
     if (!settingsForm) return;
-    setSettingsForm({ ...settingsForm, settings: {
-      ...settingsForm.settings,
-      [key]: value
-      } });
+    const next = { ...settingsForm.settings, [key]: value } as AppSettings['settings'];
+    // Enforce mutual exclusivity between streaming and secured_streaming
+    if (key === 'streaming' && value === true) {
+      next.secured_streaming = false;
+    }
+    if (key === 'secured_streaming' && value === true) {
+      next.streaming = false;
+    }
+    setSettingsForm({ ...settingsForm, settings: next });
   }
 
   return (
@@ -175,9 +184,6 @@ export function Settings({ onClose }: SettingsProps) {
               <User className="w-5 h-5" />
             )}
             {activeTab === 'settings' ? 'Settings' : 'Profile'}{' '}
-            {loading && (
-              <span className="text-sm text-gray-400">Loading...</span>
-            )}
           </h3>
           <button
             onClick={onClose}
@@ -210,16 +216,18 @@ export function Settings({ onClose }: SettingsProps) {
           >
             User Profile
           </button>
-          <button
-            onClick={() => setActiveTab('register')}
-            className={`px-4 py-2 font-medium text-sm ${
-              activeTab === 'register'
-                ? 'text-black border-b-2 border-black'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Register User
-          </button>
+          {profile?.role === 'admin' && (
+            <button
+              onClick={() => setActiveTab('register')}
+              className={`px-4 py-2 font-medium text-sm ${
+                activeTab === 'register'
+                  ? 'text-black border-b-2 border-black'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Register User
+            </button>
+          )}
         </div>
 
         {error && (
@@ -228,7 +236,6 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         )}
 
-        {!loading && (
           <div className="max-h-[60vh] overflow-y-auto pr-1">
             {activeTab === 'settings' && settingsForm && settings?.llm_options && (
               <form
@@ -347,11 +354,12 @@ export function Settings({ onClose }: SettingsProps) {
                   <input
                     type="checkbox"
                     id="streaming"
-                    checked={settingsForm.settings.streaming}
+                    checked={streaming}
                     onChange={e =>
                       handleChange('streaming', e.currentTarget.checked)
                     }
-                    className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded"
+                    disabled={secured_streaming}
+                    className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded disabled:opacity-50"
                   />
                   <label htmlFor="streaming" className="text-sm text-gray-700">
                     Enable Streaming
@@ -361,11 +369,12 @@ export function Settings({ onClose }: SettingsProps) {
                   <input
                     type="checkbox"
                     id="secured_streaming"
-                    checked={settingsForm.settings.secured_streaming}
+                    checked={secured_streaming}
                     onChange={e =>
                       handleChange('secured_streaming', e.currentTarget.checked)
                     }
-                    className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded"
+                    disabled={streaming}
+                    className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded disabled:opacity-50"
                   />
                   <label htmlFor="secured_streaming" className="text-sm text-gray-700">
                     Enable Secured Streaming
@@ -384,29 +393,31 @@ export function Settings({ onClose }: SettingsProps) {
                   <h4 className="font-medium text-gray-800">User Profile</h4>
 
                   {/* User selection dropdown */}
-                  <div>
-                    <label
-                      htmlFor="user-select"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      Select User
-                    </label>
-                    <select
-                      id="user-select"
-                      value={userSession?.userId || ''}
-                      onChange={e => {
-                        const newUserId = e.currentTarget.value;
-                        login(newUserId, userSession?.apiKey || '');
-                      }}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2"
-                    >
-                      {users.map(user => (
-                        <option key={user.user_id} value={user.user_id}>
-                          {user.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {profile.role === 'admin' && (
+                    <div>
+                      <label
+                        htmlFor="user-select"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Select User
+                      </label>
+                      <select
+                        id="user-select"
+                        value={userSession?.userId || ''}
+                        onChange={e => {
+                          const newUserId = e.currentTarget.value;
+                          login(newUserId, userSession?.apiKey || '');
+                        }}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      >
+                        {users.map(user => (
+                          <option key={user.user_id} value={user.user_id}>
+                            {user.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Profile information */}
                   <div>
@@ -706,7 +717,7 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               )}
           </div>
-        )}
+
 
         <div className="flex justify-between pt-4 mt-2 border-t border-gray-100">
           <button

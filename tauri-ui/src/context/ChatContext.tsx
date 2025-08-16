@@ -116,7 +116,7 @@ interface ChatState {
   settings: AppSettings | null;
   updateSettings: (
     settings: Partial<AppSettings>
-  ) => Promise<{ settings: AppSettings }>;
+  ) => Promise<AppSettings>;
 
   // User session management
   userSession: UserSession | null;
@@ -427,9 +427,17 @@ export function ChatProvider({
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(settings)
-    });
-    setSettings(data as AppSettings);
-    return { settings: data as AppSettings };
+    }) as { settings: SettingsType } | null | undefined;
+    let updatedSettings = settings as AppSettings;
+    if (data) {
+      updatedSettings = {
+        settings: {...data.settings},
+        llm_options: settings.llm_options as LLMOptions
+      };
+      setSettings(updatedSettings);
+    }
+
+    return updatedSettings;
   };
 
   // User profile management methods
