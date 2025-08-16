@@ -688,7 +688,7 @@ class PostgresAdapter(DatabaseAdapter):
             cursor = self.connection.cursor()
 
             # Extract metadata from conversation data
-            title = data.get("title", "Untitled Conversation")
+            title = data.get("title", "New Conversation")
             category_name = data.get("category", "General")
             starred = data.get("starred", False)
             archived = data.get("archived", False)

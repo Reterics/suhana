@@ -239,7 +239,8 @@ class AccessControlManager:
 
     def get_user_permissions(self, user_id: str) -> Set[Permission]:
         """
-        Get the permissions of a user.
+        Get the permissions of a user. If the user has not been registered with
+        the access control manager yet, assign the default USER role on the fly.
 
         Args:
             user_id: User ID
@@ -247,6 +248,14 @@ class AccessControlManager:
         Returns:
             Set[Permission]: Set of user permissions
         """
+        # Auto-register unknown users with default USER role to ensure sane defaults
+        if user_id not in self.user_permissions:
+            try:
+                self.user_roles[user_id] = Role.USER
+                self.user_permissions[user_id] = DEFAULT_ROLE_PERMISSIONS[Role.USER].copy()
+            except Exception as e:
+                self.logger.error(f"Error auto-registering user {user_id} with default permissions: {e}")
+                return set()
         return self.user_permissions.get(user_id, set())
 
     def add_user_permission(self, user_id: str, permission: Permission) -> None:

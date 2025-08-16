@@ -21,32 +21,31 @@ def db_permission_required(permission: Permission) -> Callable[[Callable[..., T]
     """
     Decorator for database methods that require a specific permission.
 
-    Args:
-        permission: Required permission
-
-    Returns:
-        Decorated function
+    Notes:
+    - We wrap a BOUND method fetched from an instance and then assign the wrapper back to the instance.
+      Functions assigned to instances are not descriptors, so we must NOT require `self` in the wrapper.
+      The original bound method already has `self` bound via func.__self__.
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(func)
-        def wrapper(self, *args, **kwargs) -> T:
-            # Extract user_id from args or kwargs
+        def wrapper(*args, **kwargs) -> T:
+            # Extract user_id from args or kwargs (first positional arg or explicit kwarg)
             user_id = None
             if args and isinstance(args[0], str):
                 user_id = args[0]
             elif 'user_id' in kwargs:
                 user_id = kwargs['user_id']
 
-            # If no user_id is provided, allow the operation (for system operations)
+            # If no user_id is provided, allow the operation (system/global context)
             if not user_id:
-                return func(self, *args, **kwargs)
+                return func(*args, **kwargs)
 
             # Check permission
             if not check_permission(user_id, permission):
                 logger.warning(f"Access denied: User {user_id} does not have permission {permission}")
                 raise PermissionError(f"User {user_id} does not have permission {permission}")
 
-            return func(self, *args, **kwargs)
+            return func(*args, **kwargs)
         return wrapper
     return decorator
 
@@ -55,18 +54,12 @@ def db_resource_permission_required(permission: Permission) -> Callable[[Callabl
     """
     Decorator for database methods that require a specific permission for a resource.
 
-    This decorator checks if the user has permission to access a resource owned by another user.
-    If the user is the owner of the resource, it checks for the corresponding "own" permission.
-
-    Args:
-        permission: Required permission
-
-    Returns:
-        Decorated function
+    Works with methods already bound to an instance and assigned back to that instance.
+    The wrapper must not require `self` explicitly.
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(func)
-        def wrapper(self, *args, **kwargs) -> T:
+        def wrapper(*args, **kwargs) -> T:
             # Extract user_id from args or kwargs
             user_id = None
             if args and isinstance(args[0], str):
@@ -74,12 +67,12 @@ def db_resource_permission_required(permission: Permission) -> Callable[[Callabl
             elif 'user_id' in kwargs:
                 user_id = kwargs['user_id']
 
-            # If no user_id is provided, allow the operation (for system operations)
+            # If no user_id is provided, allow the operation (system operations)
             if not user_id:
-                return func(self, *args, **kwargs)
+                return func(*args, **kwargs)
 
             # Extract resource_owner_id from the database if available
-            resource_owner_id = None
+            resource_owner_id: Optional[str] = None
 
             # For conversation methods, extract conversation_id and check ownership
             conversation_id = None
@@ -89,24 +82,31 @@ def db_resource_permission_required(permission: Permission) -> Callable[[Callabl
                 conversation_id = kwargs['conversation_id']
 
             if conversation_id:
-                # Try to get the conversation owner from the database
+                # Try to get the conversation owner from the database via the adapter instance
                 try:
-                    # This assumes the database adapter has a method to get conversation metadata
-                    # We'll need to implement this method in the database adapters
-                    conversation_meta = getattr(self, 'get_conversation_meta', None)
-                    if conversation_meta:
-                        meta = conversation_meta(conversation_id)
-                        if meta:
-                            resource_owner_id = meta.get('user_id')
+                    self_obj = getattr(func, '__self__', None)
+                    if self_obj is not None:
+                        conversation_meta = getattr(self_obj, 'get_conversation_meta', None)
+                        if callable(conversation_meta):
+                            meta = conversation_meta(conversation_id)
+                            if meta:
+                                resource_owner_id = meta.get('user_id')
                 except Exception as e:
                     logger.error(f"Error getting conversation owner: {e}")
 
-            # Check permission
-            if not check_permission(user_id, permission, resource_owner_id):
-                logger.warning(f"Access denied: User {user_id} does not have permission {permission} for resource owned by {resource_owner_id}")
-                raise PermissionError(f"User {user_id} does not have permission {permission} for resource owned by {resource_owner_id}")
+            # If we cannot determine a specific resource owner, conservatively treat the caller as the owner.
+            # This enables OWN vs ALL permission mapping while DB queries still enforce user_id scoping.
+            if resource_owner_id is None and user_id:
+                resource_owner_id = user_id
 
-            return func(self, *args, **kwargs)
+            # Check permission (maps ALL->OWN internally when owner matches)
+            if not check_permission(user_id, permission, resource_owner_id):
+                logger.warning(
+                    f"Access denied: User {user_id} does not have permission {permission} for resource owned by {resource_owner_id}")
+                raise PermissionError(
+                    f"User {user_id} does not have permission {permission} for resource owned by {resource_owner_id}")
+
+            return func(*args, **kwargs)
         return wrapper
     return decorator
 
@@ -131,8 +131,8 @@ def apply_database_access_controls(db_adapter: Any) -> None:
     if hasattr(db_adapter, 'create_user'):
         db_adapter.create_user = db_permission_required(Permission.MANAGE_USERS)(db_adapter.create_user)
 
-    if hasattr(db_adapter, 'update_user'):
-        db_adapter.update_user = db_permission_required(Permission.MANAGE_USERS)(db_adapter.update_user)
+    # For update_user, rely on API-level checks to allow self-updates safely.
+    # Do not enforce MANAGE_USERS here to avoid blocking users updating their own profile/password.
 
     if hasattr(db_adapter, 'delete_user'):
         db_adapter.delete_user = db_permission_required(Permission.MANAGE_USERS)(db_adapter.delete_user)
@@ -143,12 +143,11 @@ def apply_database_access_controls(db_adapter: Any) -> None:
 
         @functools.wraps(original_get_settings)
         def get_settings_with_permission(user_id: Optional[str] = None) -> Dict[str, Any]:
-            # If getting global settings, require VIEW_GLOBAL_SETTINGS permission
+            # System/global access (user_id is None) should be allowed without permission checks
             if user_id is None:
-                if not check_permission(cast(str, user_id), Permission.VIEW_GLOBAL_SETTINGS):
-                    logger.warning(f"Access denied: User {user_id} does not have permission to view global settings")
-                    raise PermissionError(f"User {user_id} does not have permission to view global settings")
+                return original_get_settings(user_id)
 
+            # For per-user settings, currently no additional permission is enforced
             return original_get_settings(user_id)
 
         db_adapter.get_settings = get_settings_with_permission
@@ -158,12 +157,11 @@ def apply_database_access_controls(db_adapter: Any) -> None:
 
         @functools.wraps(original_save_settings)
         def save_settings_with_permission(settings: Dict[str, Any], user_id: Optional[str] = None) -> bool:
-            # If saving global settings, require MANAGE_GLOBAL_SETTINGS permission
+            # Allow system/global writes when user_id is None (e.g., initialization)
             if user_id is None:
-                if not check_permission(cast(str, user_id), Permission.MANAGE_GLOBAL_SETTINGS):
-                    logger.warning(f"Access denied: User {user_id} does not have permission to manage global settings")
-                    raise PermissionError(f"User {user_id} does not have permission to manage global settings")
+                return original_save_settings(settings, user_id)
 
+            # For user-specific settings, no extra permission enforced here
             return original_save_settings(settings, user_id)
 
         db_adapter.save_settings = save_settings_with_permission

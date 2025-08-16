@@ -715,7 +715,33 @@ class SQLiteAdapter(DatabaseAdapter):
             cursor = self.connection.cursor()
 
             # Extract metadata from conversation data
-            title = data.get("title", "Untitled Conversation")
+            # Derive a meaningful title if missing or placeholder
+            raw_title = data.get("title")
+            def _derive_title() -> str:
+                # Prefer explicit title if it is non-empty and not a placeholder
+                placeholders = {"Untitled Conversation", "New Conversation", ""}
+                if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip() not in placeholders:
+                    return raw_title.strip()
+                # Try to derive from history/messages
+                def first_user_text(msgs):
+                    if not isinstance(msgs, list):
+                        return None
+                    for m in msgs:
+                        if isinstance(m, dict) and m.get("role") == "user":
+                            content = m.get("content")
+                            if isinstance(content, str) and content.strip():
+                                return content.strip()
+                    return None
+                text = first_user_text(data.get("history")) or first_user_text(data.get("messages"))
+                if not text:
+                    return "Untitled Conversation"
+                # Normalize whitespace and truncate
+                text = " ".join(text.split())
+                max_len = 60
+                if len(text) > max_len:
+                    return text[:max_len].rstrip() + "..."
+                return text
+            title = _derive_title()
             category_name = data.get("category", "General")
             starred = data.get("starred", False)
             archived = data.get("archived", False)

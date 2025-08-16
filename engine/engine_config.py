@@ -1,34 +1,26 @@
-import json
 from pathlib import Path
 from dotenv import load_dotenv
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from engine.database.base import DatabaseAdapter
-from engine.logging_config import configure_logging, get_log_config, set_log_level
+from engine.logging_config import configure_logging
 
 load_dotenv()
 
-SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
 DEFAULT_LOG_DIR = Path(__file__).parent.parent / "logs"
+DEFAULT_DB_PATH = Path(__file__).parent.parent / "suhana.db"
 
 def load_settings() -> Dict[str, Any]:
     """
-    Load settings from the settings.json file and configure the application.
-
-    Returns:
-        Dictionary containing the application settings
+    Load settings from the database and configure the application.
     """
-    with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-        settings = json.load(f)
-
-    # Fallback to env if not in settings
+    # Lazy import to avoid circular dependency during module import
+    from engine.settings_manager import SettingsManager
+    settings = SettingsManager().get_settings(None)
     if not settings.get("openai_api_key"):
         settings["openai_api_key"] = os.getenv("OPENAI_API_KEY")
-
-    # Configure logging based on settings
     configure_logging_from_settings(settings)
-
     return settings
 
 def configure_logging_from_settings(settings: Dict[str, Any]) -> None:
@@ -63,9 +55,10 @@ def configure_logging_from_settings(settings: Dict[str, Any]) -> None:
         log_dir=log_dir
     )
 
-def save_settings(settings):
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=2)
+def save_settings(settings: Dict[str, Any]):
+    # Lazy import to avoid circular dependency
+    from engine.settings_manager import SettingsManager
+    SettingsManager().save_settings(settings, None)
 
 def switch_backend(new_backend, settings):
     if new_backend in ["ollama", "openai", "gemini", "claude"]:
@@ -78,41 +71,27 @@ def switch_backend(new_backend, settings):
 
 def get_database_adapter() -> DatabaseAdapter:
     """
-    Get a database adapter based on the current settings.
-
-    Returns:
-        DatabaseAdapter: An initialized database adapter
+    Return a database adapter. No file-based settings are used.
+    Environment overrides (optional):
+    - SUHANA_DB_TYPE = sqlite | postgres (default: sqlite)
+    - SUHANA_DB_PATH (for sqlite)
+    - POSTGRES_CONN (full connection string for postgres)
     """
-    settings = load_settings()
-    db_type = settings.get("database", {}).get("type", "sqlite")
+    db_type = os.getenv("SUHANA_DB_TYPE", "sqlite").lower()
 
-    if db_type.lower() == "postgres":
+    if db_type == "postgres":
         from engine.database.postgres import PostgresAdapter
-
-        # Get connection parameters from settings
-        db_config = settings.get("database", {}).get("postgres", {})
-        connection_string = db_config.get("connection_string", "")
-
-        # If no connection string is provided, build one from individual parameters
-        if not connection_string:
-            host = db_config.get("host", "localhost")
-            port = db_config.get("port", 5432)
-            database = db_config.get("database", "suhana")
-            user = db_config.get("user", "postgres")
-            password = db_config.get("password", "")
-
-            connection_string = f"host={host} port={port} dbname={database} user={user} password={password}"
-
-        return PostgresAdapter(connection_string)
+        conn = os.getenv("POSTGRES_CONN")
+        if not conn:
+            # Build from individual env vars if provided
+            host = os.getenv("POSTGRES_HOST", "localhost")
+            port = os.getenv("POSTGRES_PORT", "5432")
+            database = os.getenv("POSTGRES_DB", "suhana")
+            user = os.getenv("POSTGRES_USER", "postgres")
+            password = os.getenv("POSTGRES_PASSWORD", "")
+            conn = f"host={host} port={port} dbname={database} user={user} password={password}"
+        return PostgresAdapter(conn)
     else:
-        # Default to SQLite
         from engine.database.sqlite import SQLiteAdapter
-
-        # Get database file path from settings or use default
-        db_path = settings.get("database", {}).get("sqlite", {}).get("path", "suhana.db")
-
-        # Ensure path is absolute
-        if not os.path.isabs(db_path):
-            db_path = os.path.join(os.path.dirname(SETTINGS_PATH), db_path)
-
+        db_path = os.getenv("SUHANA_DB_PATH", str(DEFAULT_DB_PATH))
         return SQLiteAdapter(db_path)

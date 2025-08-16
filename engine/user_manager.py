@@ -80,10 +80,10 @@ class UserManager:
         """
         self.base_dir = base_dir or Path(__file__).parent.parent
         self.users_dir = self.base_dir / "users"
-        self.users_dir.mkdir(exist_ok=True)
+        # Filesystem user directory is no longer used.
 
         # Initialize settings manager
-        self.settings_manager = SettingsManager(base_dir=self.base_dir)
+        self.settings_manager = SettingsManager()
 
         # Initialize database adapter
         self.db = db_adapter or get_database_adapter()
@@ -142,14 +142,6 @@ class UserManager:
 
             # Create user-specific settings (empty for now, will inherit from global)
             self.settings_manager.save_settings({"version": 1}, username)
-
-            # Create user directory for backward compatibility
-            user_dir = self.users_dir / username
-            user_dir.mkdir(exist_ok=True)
-
-            # Create conversations directory
-            conversations_dir = user_dir / "conversations"
-            conversations_dir.mkdir(exist_ok=True)
 
             return True, f"User '{username}' created successfully"
         except Exception as e:
@@ -344,24 +336,6 @@ class UserManager:
             if not success:
                 return False
 
-            # For backward compatibility, also delete user directory if it exists
-            user_dir = self.users_dir / user_id
-            if user_dir.exists():
-                try:
-                    # Remove all files in user directory
-                    for item in user_dir.glob("**/*"):
-                        if item.is_file():
-                            item.unlink()
-                        elif item.is_dir():
-                            for subitem in item.glob("**/*"):
-                                if subitem.is_file():
-                                    subitem.unlink()
-                            item.rmdir()
-
-                    # Remove user directory
-                    user_dir.rmdir()
-                except Exception as e:
-                    logger.warning(f"Failed to delete user directory for '{user_id}': {e}")
 
             # Remove any active sessions for this user
             for token, session in list(self._sessions.items()):
@@ -618,79 +592,3 @@ class UserManager:
             profile["personalization"]["interests"].remove(interest)
 
         return self.save_profile(user_id, profile)
-
-    def export_user_data(self, user_id: str) -> Tuple[bool, Dict[str, Any]]:
-        """
-        Export all data for a user.
-
-        Args:
-            user_id: User ID to export data for
-
-        Returns:
-            Tuple of (success, data or error message)
-        """
-        try:
-            user_dir = self.users_dir / user_id
-
-            if not user_dir.exists():
-                return False, {"error": f"User '{user_id}' not found"}
-
-            # Get profile data
-            profile = self.get_profile(user_id)
-
-            # Get user settings
-            settings = self.settings_manager.get_settings(user_id)
-
-            # Get conversation metadata
-            from engine.conversation_store import ConversationStore
-            conversation_store = ConversationStore(base_dir=self.base_dir, user_manager=self)
-            conversations = []
-
-            for category in conversation_store.list_categories(user_id):
-                category_conversations = conversation_store.list_conversation_meta(user_id, category)
-                conversations.extend(category_conversations)
-
-            # Compile export data
-            export_data = {
-                "user_id": user_id,
-                "profile": profile,
-                "settings": settings,
-                "conversations": conversations,
-                "export_date": datetime.now().replace(tzinfo=None).isoformat()
-            }
-
-            return True, export_data
-        except Exception as e:
-            error_msg = f"Error exporting data for user '{user_id}': {e}"
-            logger.error(error_msg)
-            return False, {"error": error_msg}
-
-    def import_user_data(self, user_id: str, import_data: Dict[str, Any]) -> Tuple[bool, str]:
-        """
-        Import data for a user.
-
-        Args:
-            user_id: User ID to import data for
-            import_data: Dictionary containing user data to import
-
-        Returns:
-            Tuple of (success, message)
-        """
-        try:
-            # Validate import data
-            if "profile" not in import_data:
-                return False, "Import data missing profile information"
-
-            # Update profile
-            profile = import_data.get("profile", {})
-            self.save_profile(user_id, profile)
-
-            # Update settings if present
-            if "settings" in import_data:
-                self.settings_manager.save_settings(import_data["settings"], user_id)
-
-            return True, f"User data imported successfully for '{user_id}'"
-        except Exception as e:
-            error_msg = f"Error importing data for user '{user_id}': {e}"
-            logger.error(error_msg)
-            return False, error_msg

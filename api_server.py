@@ -161,9 +161,12 @@ def _get_conversation_profile(conversation_id: str, user_id: str):
         profile = {"history": [], "user_id": user_id}
     else:
         profile = conversation_store.load_conversation(conversation_id, user_id)
-        # Check if the conversation exists and belongs to the user
-        if not profile:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+        # If the client provided a conversation_id but it doesn't exist yet,
+        # treat it as a new conversation and initialize it server-side.
+        if profile is None:
+            profile = {"history": [], "user_id": user_id}
+            # Persist immediately so subsequent operations find it
+            conversation_store.save_conversation(conversation_id, profile, user_id)
 
     # Add or verify user context in the conversation
     if "user_id" not in profile:
@@ -193,7 +196,7 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
     user_settings = settings_manager.get_settings(user_id)
     reply = handle_input(req.input, req.backend, profile, user_settings)
     conversation_store.save_conversation(req.conversation_id, profile, user_id)
-    return {"response": reply}
+    return {"response": reply, "conversation_id": req.conversation_id}
 
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
@@ -370,13 +373,8 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
     # Load the conversation directly (it will use cache if available)
     profile = conversation_store.load_conversation(conversation_id, user_id)
 
-    if not profile or not profile.get("history"):
-        # Check if the file exists before returning 404
-        path = conversation_store.get_conversation_path(conversation_id, user_id)
-        if not path.exists():
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        # Initialize with empty profile if the conversation exists but has no history
-        profile = {"history": [], "user_id": user_id}
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Add project metadata if available and not already in the profile
     if "project_path" in profile and profile["project_path"] is not None and "project_metadata" not in profile:
@@ -400,12 +398,9 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
 @app.post("/conversations/{conversation_id}")
 def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = Depends(verify_api_key)):
     """Update a conversation's properties."""
-    conv_path = conversation_store.get_conversation_path(conversation_id, user_id)
-    if not conv_path.exists():
-        raise HTTPException(status_code=404, detail="Conversation not found")
     profile = conversation_store.load_conversation(conversation_id, user_id)
 
-    if not profile or not profile.get("history"):
+    if profile is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Add or verify user context in the conversation
@@ -568,17 +563,38 @@ def get_user_settings(user_id: str, _: str = Depends(verify_api_key)):
 
 
 @app.post("/settings/{user_id}")
-def update_user_settings(user_id: str, settings_update: SettingsUpdate, _: str = Depends(verify_api_key)):
+def update_user_settings(user_id: str, body: dict, auth_user_id: str = Depends(verify_api_key)):
     """
     Update settings for a specific user (only overrides are saved).
+    Accepts either a flat payload (matching SettingsUpdate) or an AppSettings-like
+    payload with a top-level "settings" object used by the Tauri UI.
     """
+    # Enforce that callers can only update their own settings
+    if auth_user_id != user_id:
+        raise HTTPException(status_code=403, detail="You can only update your own settings")
+
     # Load merged settings to apply partial update
     merged = settings_manager.get_settings(user_id)
-    update_dict = settings_update.dict(exclude_unset=True, exclude_none=True)
-    for key, value in update_dict.items():
+
+    # Normalize incoming overrides
+    overrides = {}
+    try:
+        if isinstance(body, dict):
+            # If the UI sent { settings: {...}, llm_options: {...} }, take the nested object
+            if "settings" in body and isinstance(body["settings"], dict):
+                overrides = {k: v for k, v in body["settings"].items() if v is not None}
+            else:
+                # Assume a flat shape containing only the updatable keys
+                overrides = {k: v for k, v in body.items() if v is not None}
+    except Exception:
+        # If anything goes wrong parsing the body, keep overrides empty to avoid accidental resets
+        overrides = {}
+
+    # Apply overrides onto the merged settings
+    for key, value in overrides.items():
         merged[key] = value
 
-    # Save only the overrides relative to global
+    # Persist
     ok = settings_manager.save_settings(merged, user_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to save user settings")
@@ -603,7 +619,7 @@ def get_profile(user_id: str, _: str = Depends(verify_api_key)):
     return {"profile": profile}
 
 @app.post("/profile/{user_id}")
-def update_profile(user_id: str, profile_update: ProfileUpdate, _: str = Depends(verify_api_key)):
+def update_profile(user_id: str, profile_update: ProfileUpdate, auth_user_id: str = Depends(verify_api_key)):
     """
     Update a user's profile information.
 
@@ -614,6 +630,12 @@ def update_profile(user_id: str, profile_update: ProfileUpdate, _: str = Depends
     Returns:
         Dictionary containing the updated profile information
     """
+    # Only allow users to update their own profile unless they have admin privileges
+    if auth_user_id != user_id:
+        from engine.security.access_control import Permission, check_permission
+        if not check_permission(auth_user_id, Permission.MANAGE_USERS):
+            raise HTTPException(status_code=403, detail="You can only update your own profile")
+
     profile = user_manager.get_profile(user_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
@@ -647,7 +669,7 @@ def get_preferences(user_id: str, _: str = Depends(verify_api_key)):
     return {"preferences": preferences}
 
 @app.post("/profile/{user_id}/preferences")
-def update_preferences(user_id: str, preferences_update: PreferencesUpdate, _: str = Depends(verify_api_key)):
+def update_preferences(user_id: str, preferences_update: PreferencesUpdate, auth_user_id: str = Depends(verify_api_key)):
     """
     Update a user's preferences.
 
@@ -658,6 +680,12 @@ def update_preferences(user_id: str, preferences_update: PreferencesUpdate, _: s
     Returns:
         Dictionary containing the updated preferences
     """
+    # Only allow users to update their own preferences unless they have admin privileges
+    if auth_user_id != user_id:
+        from engine.security.access_control import Permission, check_permission
+        if not check_permission(auth_user_id, Permission.MANAGE_USERS):
+            raise HTTPException(status_code=403, detail="You can only update your own preferences")
+
     # Update only the specified preferences
     update_dict = preferences_update.dict(exclude_unset=True, exclude_none=True)
     success = user_manager.update_preferences(user_id, update_dict)
@@ -685,7 +713,7 @@ def get_personalization(user_id: str, _: str = Depends(verify_api_key)):
     return {"personalization": personalization}
 
 @app.post("/profile/{user_id}/personalization")
-def update_personalization(user_id: str, personalization_update: PersonalizationUpdate, _: str = Depends(verify_api_key)):
+def update_personalization(user_id: str, personalization_update: PersonalizationUpdate, auth_user_id: str = Depends(verify_api_key)):
     """
     Update a user's personalization settings.
 
@@ -696,6 +724,12 @@ def update_personalization(user_id: str, personalization_update: Personalization
     Returns:
         Dictionary containing the updated personalization settings
     """
+    # Only allow users to update their own personalization settings unless they have admin privileges
+    if auth_user_id != user_id:
+        from engine.security.access_control import Permission, check_permission
+        if not check_permission(auth_user_id, Permission.MANAGE_USERS):
+            raise HTTPException(status_code=403, detail="You can only update your own personalization settings")
+
     # Update only the specified personalization settings
     update_dict = personalization_update.dict(exclude_unset=True, exclude_none=True)
     success = user_manager.update_personalization(user_id, update_dict)
@@ -723,7 +757,7 @@ def get_privacy_settings(user_id: str, _: str = Depends(verify_api_key)):
     return {"privacy": privacy_settings}
 
 @app.post("/profile/{user_id}/privacy")
-def update_privacy_settings(user_id: str, privacy_update: PrivacyUpdate, _: str = Depends(verify_api_key)):
+def update_privacy_settings(user_id: str, privacy_update: PrivacyUpdate, auth_user_id: str = Depends(verify_api_key)):
     """
     Update a user's privacy settings.
 
@@ -734,6 +768,12 @@ def update_privacy_settings(user_id: str, privacy_update: PrivacyUpdate, _: str 
     Returns:
         Dictionary containing the updated privacy settings
     """
+    # Only allow users to update their own privacy settings unless they have admin privileges
+    if auth_user_id != user_id:
+        from engine.security.access_control import Permission, check_permission
+        if not check_permission(auth_user_id, Permission.MANAGE_USERS):
+            raise HTTPException(status_code=403, detail="You can only update your own privacy settings")
+
     # Update only the specified privacy settings
     update_dict = privacy_update.dict(exclude_unset=True, exclude_none=True)
     success = user_manager.update_privacy_settings(user_id, update_dict)
