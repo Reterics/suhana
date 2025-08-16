@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 def _salt_for_conversation(conversation_id: str) -> bytes:
     return hashlib.sha256(f"chat-stream-v1:{conversation_id}".encode("utf-8")).digest()
 
-def _derive_aes256_gcm(shared_secret: bytes, conversation_id: str) -> AESGCM:
+def derive_aes256_gcm(shared_secret: bytes, conversation_id: str) -> AESGCM:
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
@@ -21,14 +21,14 @@ def _derive_aes256_gcm(shared_secret: bytes, conversation_id: str) -> AESGCM:
     key = hkdf.derive(shared_secret)
     return AESGCM(key)
 
-def _b64u(data: bytes) -> str:
+def b64u(data: bytes) -> str:
     # standard b64 is fine; keep consistent with client
     return base64.b64encode(data).decode("ascii")
 
-def _b64d(s: str) -> bytes:
+def b64d(s: str) -> bytes:
     return base64.b64decode(s.encode("ascii"))
 
-async def _ndjson_encrypted_stream(
+async def ndjson_encrypted_stream(
     conversation_id: str,
     token_iter: Iterator[str],
     aesgcm: AESGCM,
@@ -54,8 +54,8 @@ async def _ndjson_encrypted_stream(
         packet = {
             "type": "ciphertext",
             "seq": seq,
-            "iv": _b64u(iv),
-            "ciphertext": _b64u(ct),
+            "iv": b64u(iv),
+            "ciphertext": b64u(ct),
             "aad": aad_str,
         }
         buf = []

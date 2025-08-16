@@ -1,27 +1,19 @@
 import { useEffect, useState } from 'preact/hooks';
-import { BASE_URL } from '../context/ChatContext.tsx';
+import {useChat} from '../context/ChatContext.tsx';
 import { ChevronUp, ChevronLeft, ChevronRight, X } from 'lucide-preact';
 
-interface PathPart {
+export interface PathPart {
   name: string;
   path: string;
 }
 
-interface FolderInfo {
+export interface FolderInfo {
   name: string;
   path: string;
   is_project: boolean;
   modified: number;
 }
 
-interface BrowseFoldersResponse {
-  current: string;
-  parent: string | null;
-  path_parts: PathPart[];
-  subfolders: FolderInfo[];
-  separator: string;
-  recent_projects: string[];
-}
 
 export function FolderSelector({
   onSelect,
@@ -30,6 +22,7 @@ export function FolderSelector({
   onSelect: (path: string) => void;
   onClose: () => void;
 }) {
+  const { getFolders } = useChat();
   const [currentPath, setCurrentPath] = useState('');
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [pathParts, setPathParts] = useState<PathPart[]>([]);
@@ -42,16 +35,16 @@ export function FolderSelector({
   const [history, setHistory] = useState<string[]>([]);
   const [historyPosition, setHistoryPosition] = useState(-1);
 
+
   async function fetchFolders(path = '', updateHistory = true) {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${BASE_URL}/browse-folders?path=${encodeURIComponent(path)}`
-      );
-      if (!res.ok)
-        throw new Error((await res.json()).detail || 'Failed to fetch folders');
-      const data: BrowseFoldersResponse = await res.json();
+      const data = await getFolders(path)
+      console.error(data)
+      if (!data) {
+        throw new Error('Failed to fetch folders');
+      }
       setCurrentPath(data.current);
       setInputPath(data.current);
       setSeparator(data.separator);
@@ -66,6 +59,7 @@ export function FolderSelector({
         setHistoryPosition(prev => prev + 1);
       }
     } catch (err) {
+      console.error(err)
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setIsLoading(false);

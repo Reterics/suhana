@@ -8,6 +8,7 @@ import {
 import { Dispatch } from 'preact/compat';
 import { v4 } from 'uuid';
 import {consumeEncryptedStream} from "../utils/client-stream.ts";
+import {FolderInfo, PathPart} from "../components/FolderSelector.tsx";
 
 export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
@@ -78,6 +79,15 @@ export interface UserSession {
   lastLogin: Date;
 }
 
+interface BrowseFoldersResponse {
+  current: string;
+  parent: string | null;
+  path_parts: PathPart[];
+  subfolders: FolderInfo[];
+  separator: string;
+  recent_projects: string[];
+}
+
 interface ChatState {
   conversationId: string;
   messages: ChatMessage[];
@@ -145,6 +155,8 @@ interface ChatState {
     password: string,
     name?: string
   ) => Promise<{ user_id: string; api_key: string }>;
+
+  getFolders: (path: string) => Promise<BrowseFoldersResponse | null>
 }
 
 export interface ConversationMeta {
@@ -397,12 +409,19 @@ export function ChatProvider({
   };
 
   const getSettings = async () => {
-    const data = await fetchWithKey(`${BASE_URL}/settings`, apiKey, setError);
+    if (!userSession?.userId) {
+      throw new Error('User must be authenticated to load settings');
+    }
+    const data = await fetchWithKey(`${BASE_URL}/settings/${userSession.userId}`, apiKey, setError);
     return data as AppSettings;
   };
 
   const updateSettings = async (settings: Partial<AppSettings>) => {
-    const data = await fetchWithKey(`${BASE_URL}/settings`, apiKey, setError, {
+    if (!userSession?.userId) {
+      throw new Error('User must be authenticated to update settings');
+    }
+    const url = `${BASE_URL}/settings/${userSession.userId}`;
+    const data = await fetchWithKey(url, apiKey, setError, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -603,6 +622,23 @@ export function ChatProvider({
     }
   };
 
+  const getFolders = async (path: string): Promise<BrowseFoldersResponse | null> => {
+     const folders = await fetchWithKey(
+       `${BASE_URL}/browse-folders?path=${encodeURIComponent(path)}`,
+       apiKey,
+       (e) => {
+         if (e) {
+           throw new Error(e || 'Failed to fetch folders');
+         }
+       },
+       undefined,
+       1
+     ) as unknown as Promise<BrowseFoldersResponse | null>;
+
+     console.error('Returned folders', folders)
+     return folders;
+  }
+
   return (
     <ChatContext.Provider
       value={{
@@ -642,7 +678,8 @@ export function ChatProvider({
         updatePersonalization,
         getPrivacySettings,
         updatePrivacySettings,
-        registerUser
+        registerUser,
+        getFolders
       }}
     >
       {children}

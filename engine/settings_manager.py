@@ -24,10 +24,14 @@ class SettingsManager:
     DEFAULT_SETTINGS = {
         "version": CURRENT_VERSION,
         "llm_backend": "ollama",
-        "ollama_model": "llama3",
+        "llm_model": "llama3",
         "openai_model": "gpt-4",
         "gemini_model": "gemini-pro",
         "claude_model": "claude-3-opus-20240229",
+        # feature flags
+        "voice": False,
+        "streaming": False,
+        "secured_streaming": False,
         "logging": {
             "console_level": "INFO",
             "file_level": "DEBUG",
@@ -255,6 +259,16 @@ class SettingsManager:
         Returns:
             Dictionary containing the migrated settings
         """
+        # Map legacy keys to new schema
+        if "ollama_model" in settings and "llm_model" not in settings:
+            settings["llm_model"] = settings.get("ollama_model")
+        # Clean up legacy keys if present
+        if "ollama_model" in settings:
+            try:
+                del settings["ollama_model"]
+            except Exception:
+                pass
+
         # Add any missing default settings
         for key, value in self.DEFAULT_SETTINGS.items():
             if key not in settings:

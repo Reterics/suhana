@@ -8,7 +8,6 @@ from typing import List
 import whisper
 from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -21,8 +20,8 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import (
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from engine.backends.ollama import get_downloaded_models
-from engine.crypto_query import _b64d, _derive_aes256_gcm, _ndjson_encrypted_stream, _b64u
-from engine.engine_config import load_settings, save_settings
+from engine.crypto_query import b64d, derive_aes256_gcm, ndjson_encrypted_stream, b64u
+from engine.settings_manager import SettingsManager
 from engine.agent_core import handle_input
 from engine.di import container
 from engine.conversation_store import (
@@ -50,7 +49,8 @@ app.add_middleware(
 asset_path = Path(__file__).parent / "assets"
 app.mount("/assets", StaticFiles(directory=asset_path), name="assets")
 
-settings = load_settings()
+# Initialize SettingsManager for per-user settings handling
+settings_manager = SettingsManager()
 model = whisper.load_model("base")
 
 def verify_api_key(x_api_key: str = Header(...), request: Request = None):
@@ -98,6 +98,7 @@ class SettingsUpdate(BaseModel):
     openai_model: str | None = None
     voice: bool | None = None
     streaming: bool | None = None
+    secured_streaming: bool | None = None
     openai_api_key: str | None = None
 
 class ProfileUpdate(BaseModel):
@@ -188,7 +189,9 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
     if req.input is None:
         return {"response": "No input provided", "conversation_id": req.conversation_id}
 
-    reply = handle_input(req.input, req.backend, profile, settings)
+    # Load per-user settings for this request
+    user_settings = settings_manager.get_settings(user_id)
+    reply = handle_input(req.input, req.backend, profile, user_settings)
     conversation_store.save_conversation(req.conversation_id, profile, user_id)
     return {"response": reply}
 
@@ -212,7 +215,8 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
             yield "No input provided"
         return StreamingResponse(simple_generator(), media_type="text/plain")
 
-    generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
+    user_settings = settings_manager.get_settings(user_id)
+    generator = handle_input(req.input, req.backend, profile, user_settings, force_stream=True)
 
     def saving_generator():
         conversation_store.save_conversation(req.conversation_id, profile, user_id)  # save after user message
@@ -243,8 +247,9 @@ async def query_stream(
         media_type = "application/x-ndjson" if transport_encrypt else "text/plain"
         return StreamingResponse(simple_generator(), media_type=media_type)
 
-    # Your existing token generator (sync iterator)
-    generator = handle_input(req.input, req.backend, profile, settings, force_stream=True)
+        # Your existing token generator (sync iterator)
+    user_settings = settings_manager.get_settings(user_id)
+    generator = handle_input(req.input, req.backend, profile, user_settings, force_stream=True)
 
     def saving_iter():
         # save after user message
@@ -262,7 +267,7 @@ async def query_stream(
 
     # --- Transport-layer encryption setup (server side) ---
     # 1) Parse client's ephemeral X25519 pubkey (raw 32 bytes in base64)
-    client_raw = _b64d(x_client_pubkey)
+    client_raw = b64d(x_client_pubkey)
     client_pub = X25519PublicKey.from_public_bytes(client_raw)
 
     # 2) Generate server ephemeral key & derive shared secret
@@ -270,14 +275,14 @@ async def query_stream(
     server_pub_raw = server_priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)  # raw 32B
     shared = server_priv.exchange(client_pub)  # 32B shared secret
 
-    aesgcm = _derive_aes256_gcm(shared, req.conversation_id)
+    aesgcm = derive_aes256_gcm(shared, req.conversation_id)
 
     async def encrypted_stream():
         # First line: send server's ephemeral pubkey so client can derive same AES key
-        first = {"type": "server_pubkey", "pubkey": _b64u(server_pub_raw)}
+        first = {"type": "server_pubkey", "pubkey": b64u(server_pub_raw)}
         yield json.dumps(first, separators=(",", ":")) + "\n"
 
-        async for line in _ndjson_encrypted_stream(
+        async for line in ndjson_encrypted_stream(
                 req.conversation_id,
                 saving_iter(),
                 aesgcm,
@@ -395,8 +400,6 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
 @app.post("/conversations/{conversation_id}")
 def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = Depends(verify_api_key)):
     """Update a conversation's properties."""
-    from engine.conversation_store import ConversationStore
-
     conv_path = conversation_store.get_conversation_path(conversation_id, user_id)
     if not conv_path.exists():
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -419,32 +422,19 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
 
     # Process input if provided
     if req.input:
-        reply = handle_input(req.input, req.backend, profile, settings)
         conversation_store.save_conversation(conversation_id, profile, user_id)
 
-        # Update recent projects in settings
+        # Update recent projects in settings (per-user) using settings_manager
         try:
-            settings_path = Path("settings.json")
-            settings_data = {}
-            if settings_path.exists():
-                import json
-                with open(settings_path, "r") as f:
-                    settings_data = json.load(f)
-
-            # Add current project to recent projects
-            recent_projects = settings_data.get("recent_projects", [])
-            # Remove if already exists (to move it to the top)
-            if req.project_path in recent_projects:
-                recent_projects.remove(req.project_path)
-            # Add to the beginning of the list
-            recent_projects.insert(0, req.project_path)
-            # Keep only the 10 most recent projects
-            recent_projects = recent_projects[:10]
-            settings_data["recent_projects"] = recent_projects
-
-            # Save updated settings
-            with open(settings_path, "w") as f:
-                json.dump(settings_data, f, indent=2)
+            if req.project_path:
+                merged = settings_manager.get_settings(user_id)
+                recent_projects = merged.get("recent_projects", [])
+                if req.project_path in recent_projects:
+                    recent_projects.remove(req.project_path)
+                recent_projects.insert(0, req.project_path)
+                recent_projects = recent_projects[:10]
+                merged["recent_projects"] = recent_projects
+                settings_manager.save_settings(merged, user_id)
         except Exception:
             # Silently fail if we can't update settings
             pass
@@ -469,7 +459,7 @@ def health():
     return {"status": "ok"}
 
 @app.get("/browse-folders")
-def browse_folders(path: str = ""):
+def browse_folders(path: str = "", user_id: str = Depends(verify_api_key)):
     if not path:
         # Use the root drive as the base folder
         current_drive = os.path.splitdrive(os.getcwd())[0]
@@ -540,16 +530,12 @@ def browse_folders(path: str = ""):
     # Sort directories: projects first, then alphabetically
     subdirs.sort(key=lambda x: (not x["is_project"], x["name"].lower()))
 
-    # Get recent projects from settings if available
+    # Get recent projects from per-user settings via settings_manager
     recent_projects = []
     try:
-        settings_path = Path("settings.json")
-        if settings_path.exists():
-            import json
-            with open(settings_path, "r") as f:
-                settings_data = json.load(f)
-                recent_projects = settings_data.get("recent_projects", [])
-    except:
+        user_settings = settings_manager.get_settings(user_id)
+        recent_projects = user_settings.get("recent_projects", [])
+    except Exception:
         pass
 
     return {
@@ -561,17 +547,14 @@ def browse_folders(path: str = ""):
         "recent_projects": recent_projects
     }
 
-@app.get("/settings")
-def get_settings():
-    """
-    Get the current settings and available LLM options.
 
-    Returns:
-        Dictionary containing the current settings and available LLM options
+@app.get("/settings/{user_id}")
+def get_user_settings(user_id: str, _: str = Depends(verify_api_key)):
     """
-    current_settings = load_settings()
+    Get MERGED settings for a specific user (global + overrides).
+    """
+    current_settings = settings_manager.get_settings(user_id)
 
-    # Define available LLM options
     llm_options = {
         "ollama": get_downloaded_models(),
         "openai": [
@@ -581,34 +564,26 @@ def get_settings():
             "gpt-4o"
         ]
     }
+    return {"settings": current_settings, "llm_options": llm_options}
 
-    return {
-        "settings": current_settings,
-        "llm_options": llm_options
-    }
 
-@app.post("/settings")
-def update_settings(settings_update: SettingsUpdate):
+@app.post("/settings/{user_id}")
+def update_user_settings(user_id: str, settings_update: SettingsUpdate, _: str = Depends(verify_api_key)):
     """
-    Update the settings with the provided values.
-
-    Args:
-        settings_update: SettingsUpdate model containing the settings to update
-
-    Returns:
-        Dictionary containing the updated settings
+    Update settings for a specific user (only overrides are saved).
     """
-    current_settings = load_settings()
-
-    # Update the settings with the provided values
+    # Load merged settings to apply partial update
+    merged = settings_manager.get_settings(user_id)
     update_dict = settings_update.dict(exclude_unset=True, exclude_none=True)
     for key, value in update_dict.items():
-        current_settings[key] = value
+        merged[key] = value
 
-    # Save the updated settings
-    save_settings(current_settings)
+    # Save only the overrides relative to global
+    ok = settings_manager.save_settings(merged, user_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to save user settings")
 
-    return {"settings": current_settings}
+    return {"settings": merged}
 
 @app.get("/profile/{user_id}")
 def get_profile(user_id: str, _: str = Depends(verify_api_key)):

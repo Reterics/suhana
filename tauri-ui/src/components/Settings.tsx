@@ -10,11 +10,10 @@ import {
 import { Settings as SettingsIcon, User, X } from 'lucide-preact';
 
 interface SettingsProps {
-  isOpen: boolean;
   onClose: () => void;
 }
 
-export function Settings({ isOpen, onClose }: SettingsProps) {
+export function Settings({ onClose }: SettingsProps) {
   const {
     settings,
     updateSettings,
@@ -63,13 +62,14 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   } | null>(null);*/
 
   useEffect(() => {
-    if (isOpen) {
-      void loadUsers();
+     void loadUsers();
+  }, []);
+
+  useEffect(() => {
       if (userSession?.userId) {
         void loadProfileData(userSession.userId);
       }
-    }
-  }, [isOpen, userSession]);
+  }, [userSession]);
 
   useEffect(() => {
     setSettingsForm(settings);
@@ -152,10 +152,11 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
   function handleChange(key: keyof AppSettings['settings'], value: any) {
     if (!settingsForm) return;
-    setSettingsForm({ ...settingsForm, [key]: value });
+    setSettingsForm({ ...settingsForm, settings: {
+      ...settingsForm.settings,
+      [key]: value
+      } });
   }
-
-  if (!isOpen) return null;
 
   return (
     <div
@@ -362,7 +363,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     id="secured_streaming"
                     checked={settingsForm.settings.secured_streaming}
                     onChange={e =>
-                      handleChange('streaming', e.currentTarget.checked)
+                      handleChange('secured_streaming', e.currentTarget.checked)
                     }
                     className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded"
                   />

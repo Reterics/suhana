@@ -128,8 +128,6 @@ export function App() {
           ...(apiKey ? { 'x-api-key': apiKey } : {})
         },
         body: JSON.stringify({
-          input: 'Update mode/project path',
-          backend: 'ollama',
           conversation_id: conversationId,
           mode,
           project_path: path
@@ -376,8 +374,9 @@ export function App() {
         />
       )}
 
-      <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
+      {settingsOpen &&
+        <Settings onClose={() => setSettingsOpen(false)} />
+       }
       {authModalOpen && authModalView === 'login' && (
         <Login
           onClose={() => setAuthModalOpen(false)}
