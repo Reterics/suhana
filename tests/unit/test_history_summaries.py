@@ -138,8 +138,10 @@ def build_prompt_from_trimmed(trimmed_msgs):
     """Recreate the exact prompt string the code sends to Ollama."""
     lines = []
     for m_ in trimmed_msgs:
-        role = "" if m_["role"] == "system" else m_["role"].capitalize()
+        role = "Assistant (memory summary)" if m_["role"] == "system" else m_["role"].capitalize()
         lines.append(f"{role}: {m_['content']}")
+    last_message = trimmed_msgs[len(trimmed_msgs) - 1]
+    lines.append(f"User: {last_message['content']}")
     return "\n".join(lines) + "\nAssistant:"
 
 @pytest.fixture
@@ -196,7 +198,7 @@ PROMPT_VISUAL_CASES = [
     (["UA*5", "S", "UA*4"],              "SYS S U A U A U A U A U END"),
 
     # 8) Many summaries (exactly 5), then 10th U/A with the new user → new summary; prompt keeps last 5 (incl. the new one); tail empty
-    (((["UA*5", "S"] * 5) + ["UA*4", "U"]), "SYS S S S S S END"),
+    (((["UA*5", "S"] * 5) + ["UA*4"]), "SYS S S S S S U A U A U A U A U END"),
 ]
 
 @pytest.mark.parametrize("before_tokens, expected_visual", PROMPT_VISUAL_CASES)

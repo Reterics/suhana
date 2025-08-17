@@ -1,0 +1,35 @@
+name: Frontend Tests
+
+on:
+  push:
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - 'tauri-ui/src/**'
+      - '.github/workflows/frontend-tests.yml'
+  pull_request:
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - 'tauri-ui/src/**'
+      - '.github/workflows/frontend-tests.yml'
+
+jobs:
+  frontend-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: tauri-ui/package-lock.json
+      - working-directory: tauri-ui
+        run: npm ci
+      - working-directory: tauri-ui
+        run: npm run test:coverage
+      - uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: tauri-ui/coverage
+          flags: frontend

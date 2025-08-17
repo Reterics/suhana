@@ -107,7 +107,7 @@ def test_query_gemini_post_exception(monkeypatch, settings, profile):
     monkeypatch.setattr(gemini_backend, "trim_message_history", lambda msgs, model: msgs)
 
     reply = gemini_backend.query_gemini("Error test?", "Sys", profile, settings, force_stream=False)
-    assert "[Gemini connection error]" in reply
+    assert "[Gemini error:" in reply
 
 def test_query_gemini_stream_mode(monkeypatch, settings, profile):
     import engine.backends.gemini as gemini_backend
@@ -137,4 +137,4 @@ def test_query_gemini_stream_exception(monkeypatch, settings, profile):
 
     gen = gemini_backend.query_gemini("oops", "Sys", profile, settings, force_stream=True)
     token = next(gen)
-    assert "[Gemini connection error]" in token
+    assert "[Gemini error:" in token

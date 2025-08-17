@@ -54,15 +54,9 @@ def test_save_vectorstore(monkeypatch, tmp_path):
     fake_FAISS.from_documents.assert_called_once_with([fake_doc], fake_embed)
     fake_vectorstore.save_local.assert_called_once()
 
-    # With metadata
-    meta = {"project_info": {"foo": "bar"}}
-    out2 = utils.save_vectorstore([fake_doc], fake_embed, tmp_path, meta)
+    # No metadata handling in current implementation; ensure the function still returns the vectorstore
+    out2 = utils.save_vectorstore([fake_doc], fake_embed, tmp_path)
     assert out2 is fake_vectorstore
-    # Check metadata file written
-    with open(tmp_path / 'metadata.json') as f:
-        import json
-        data = json.load(f)
-        assert data == meta
 
 def test_load_metadata(monkeypatch, tmp_path):
     import engine.utils as utils

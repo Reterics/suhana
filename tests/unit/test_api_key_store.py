@@ -1,51 +1,46 @@
-import json
-import tempfile
-from pathlib import Path
+import os
+from unittest.mock import MagicMock
 
 import pytest
 from engine import api_key_store
-
-
-@pytest.fixture
-def temp_key_path(monkeypatch):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fake_path = Path(tmpdir) / "api_keys.json"
-        monkeypatch.setattr("engine.api_key_store.API_KEY_PATH", fake_path)
-        yield fake_path
+from engine.api_key_store import ApiKeyManager
 
 
 def test_get_default_key_from_env(monkeypatch):
+    # Use a dummy db adapter because ApiKeyManager initializes the DB
+    dummy_db = MagicMock()
+    dummy_db.initialize_schema.return_value = None
+    dummy_db.get_user_api_keys.return_value = []
+    dummy_db.get_user.return_value = None
+    dummy_db.create_user.return_value = True
+    dummy_db.create_api_key.return_value = True
+
     monkeypatch.setenv("SUHANA_DEFAULT_API_KEY", "test-env-key")
-    key = api_key_store.get_default_key()
+    mgr = ApiKeyManager(db_adapter=dummy_db)
+    key = mgr._get_default_key()
     assert key == "test-env-key"
 
 
 def test_get_default_key_generated(monkeypatch):
+    dummy_db = MagicMock()
+    dummy_db.initialize_schema.return_value = None
+    dummy_db.get_user_api_keys.return_value = []
+    dummy_db.get_user.return_value = None
+    dummy_db.create_user.return_value = True
+    dummy_db.create_api_key.return_value = True
+
     monkeypatch.delenv("SUHANA_DEFAULT_API_KEY", raising=False)
-    key = api_key_store.get_default_key()
+    mgr = ApiKeyManager(db_adapter=dummy_db)
+    key = mgr._get_default_key()
     assert isinstance(key, str)
     assert len(key) > 10
 
 
-def test_ensure_api_keys_file_creates_file(temp_key_path):
-    assert not temp_key_path.exists()
-    api_key_store.ensure_api_keys_file()
-    assert temp_key_path.exists()
-    content = json.loads(temp_key_path.read_text())
-    assert "keys" in content
-    assert isinstance(content["keys"], list)
-    assert content["keys"][0]["active"] is True
+def test_load_valid_api_keys_uses_manager(monkeypatch):
+    fake_manager = MagicMock()
+    fake_manager.get_valid_api_keys.return_value = {"abc123", "xyz"}
+    monkeypatch.setattr(api_key_store, "get_api_key_manager", lambda db_adapter=None: fake_manager)
 
-
-def test_load_valid_api_keys(temp_key_path):
-    dummy_key = "abc123"
-    test_data = {
-        "keys": [
-            {"key": dummy_key, "owner": "dev", "active": True},
-            {"key": "inactive", "owner": "test", "active": False}
-        ]
-    }
-    temp_key_path.write_text(json.dumps(test_data, indent=2))
     keys = api_key_store.load_valid_api_keys()
-    assert dummy_key in keys
-    assert "inactive" not in keys
+    assert "abc123" in keys
+    assert "xyz" in keys

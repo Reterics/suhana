@@ -111,7 +111,7 @@ def test_query_claude_post_exception(monkeypatch, settings, profile):
     monkeypatch.setattr(claude_backend, "Anthropic", MagicMock(return_value=fake_client))
 
     reply = claude_backend.query_claude("Error test?", "Sys", profile, settings, force_stream=False)
-    assert "[Claude connection error]" in reply
+    assert "[Claude error:" in reply
 
 def test_query_claude_stream(monkeypatch, settings, profile):
     import engine.backends.claude as claude_backend
@@ -153,4 +153,4 @@ def test_query_claude_stream_exception(monkeypatch, settings, profile):
 
     gen = claude_backend.query_claude("oops", "Sys", profile, settings, force_stream=True)
     token = next(gen)
-    assert "[Claude connection error]" in token
+    assert "[Claude error:" in token

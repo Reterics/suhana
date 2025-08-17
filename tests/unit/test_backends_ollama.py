@@ -33,7 +33,7 @@ def test_query_ollama_offline(monkeypatch):
     import engine.backends.ollama as ollama
 
     # Patch trim_message_history to return trimmed list
-    monkeypatch.setattr(ollama, "trim_message_history", lambda msgs, model: msgs)
+    monkeypatch.setattr(ollama, "trim_message_history", lambda msgs, model=None, current_prompt=None: msgs)
 
     # Patch summarize_history_offline to avoid requests
     monkeypatch.setattr(ollama, "summarize_history_offline", lambda messages, model: "Earlier summary.")
@@ -69,7 +69,7 @@ def test_query_ollama_stream(monkeypatch):
     import engine.backends.ollama as ollama
 
     # Patch trim_message_history
-    monkeypatch.setattr(ollama, "trim_message_history", lambda msgs, model: msgs)
+    monkeypatch.setattr(ollama, "trim_message_history", lambda msgs, model=None, current_prompt=None: msgs)
 
     # Patch summarize_history_offline
     monkeypatch.setattr(ollama, "summarize_history_offline", lambda messages, model: "Earlier summary.")
@@ -78,6 +78,7 @@ def test_query_ollama_stream(monkeypatch):
     class FakeResp:
         def __enter__(self): return self
         def __exit__(self, exc_type, exc_val, exc_tb): return False
+        def raise_for_status(self): return None
         def iter_lines(self):
             # Simulate two lines of streamed JSON
             yield b'{"response": "Hello, "}'

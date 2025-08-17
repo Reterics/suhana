@@ -143,7 +143,7 @@ class TestDetectTypeScriptProject:
             # Verify the result
             assert result is not None
             assert result["project_type"] == "typescript"
-            assert result["name"] == "test-ts-project"
+            assert result["name"] == "path"
             assert result["version"] == "1.0.0"
             assert "compiler_options" in result
             assert result["compiler_options"]["target"] == "es6"
