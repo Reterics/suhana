@@ -80,7 +80,7 @@ describe('ChatToolbar', () => {
     render(<ChatToolbar onSend={onSend} />);
     const textarea = screen.getByPlaceholderText(/Type a message/i);
 
-    fireEvent.input(textarea, { target: { value: 'Hello world' } });
+    fireEvent.keyUp(textarea, { key: 'a', target: { value: 'Hello world' } });
 
     // Click Send button
     fireEvent.click(screen.getByTestId('icon-send').parentElement!);
@@ -95,7 +95,7 @@ describe('ChatToolbar', () => {
     render(<ChatToolbar onSend={onSend} />);
     const textarea = screen.getByPlaceholderText(/Type a message/i);
 
-    fireEvent.input(textarea, { target: { value: '   ' } });
+    fireEvent.keyUp(textarea, { key: 'a', target: { value: '   ' } });
     fireEvent.click(screen.getByTestId('icon-send').parentElement!);
 
     expect(onSend).not.toHaveBeenCalled();

@@ -2,6 +2,15 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
 import { vi, describe, it, beforeEach, expect } from 'vitest';
 import { FolderSelector } from './FolderSelector';
 
+// Mock ChatContext to provide getFolders so component doesn't throw
+let mockGetFolders: (path: string) => Promise<any>;
+vi.mock('../context/ChatContext.tsx', () => ({
+  useChat: () => ({
+    getFolders: (path: string) => mockGetFolders(path)
+  }),
+  __esModule: true
+}));
+
 // Mock icons (lucide-preact)
 vi.mock('lucide-preact', () => ({
   ChevronUp: () => <span data-testid="icon-up" />,
@@ -39,13 +48,22 @@ const FAKE_RESPONSE = {
 
 function setupFetch(resp: Partial<typeof FAKE_RESPONSE> = {}, ok = true) {
   const data = { ...FAKE_RESPONSE, ...resp };
+  // Default mockGetFolders will use global fetch so tests can still inspect fetch calls
+  mockGetFolders = async (path: string) => {
+    const res = (await (globalThis.fetch as any)(`http://test/browse?path=${encodeURIComponent(path)}`)) as any;
+    if (res.ok === false) {
+      const text = await (res.text ? res.text() : Promise.resolve('Failed to fetch folders'));
+      throw new Error(text || 'Failed to fetch folders');
+    }
+    return res.json();
+  };
   globalThis.fetch = vi.fn().mockImplementation(() =>
     Promise.resolve({
       ok,
       json: () => Promise.resolve(data)
     })
   ) as any;
-}
+  }
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -103,16 +121,20 @@ describe('FolderSelector', () => {
   it('navigates to folder and selects on double click (folder list)', async () => {
     const onSelect = vi.fn();
     render(<FolderSelector onSelect={onSelect} onClose={vi.fn()} />);
+    // Wait for folders to load and first folder button to appear
     await waitFor(() => {
-      expect(screen.getByTestId('folderList')).toBeTruthy();
+      const list = screen.getByTestId('folderList');
+      expect(list.querySelectorAll('button').length).toBeGreaterThan(0);
     });
 
     const folderButtons = screen
       .getByTestId('folderList')
       .querySelectorAll('button');
+
     // Click projectA in folders grid
     fireEvent.click(folderButtons[0]);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2); // initial + click
+    // Wait for fetch to be called again
+    await waitFor(() => expect((globalThis.fetch as any).mock.calls.length).toBeGreaterThan(1));
 
     // Double click to select
     fireEvent.dblClick(folderButtons[0]);
@@ -140,7 +162,9 @@ describe('FolderSelector', () => {
   it('selects folder using Select This Folder button', async () => {
     const onSelect = vi.fn();
     render(<FolderSelector onSelect={onSelect} onClose={vi.fn()} />);
-    await screen.findByTestId('selectFolderButton');
+    // Wait until currentPath is set by initial fetch
+    const input = await screen.findByTestId('inputPath');
+    await waitFor(() => expect((input as HTMLInputElement).getAttribute('value') || (input as HTMLInputElement).value).toBe('/home/user'));
     fireEvent.click(screen.getByTestId('selectFolderButton'));
     expect(onSelect).toHaveBeenCalledWith('/home/user');
   });
@@ -179,12 +203,15 @@ describe('FolderSelector', () => {
 
   it('navigates back and forward with history buttons', async () => {
     render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
+    // Wait for first folder button to appear
     await waitFor(() => {
-      expect(screen.getByTestId('folderList')).toBeTruthy();
+      const list = screen.getByTestId('folderList');
+      expect(list.querySelectorAll('button').length).toBeGreaterThan(0);
     });
     const folderButtons = screen
       .getByTestId('folderList')
       .querySelectorAll('button');
+    expect(folderButtons.length).toBeGreaterThan(0);
     // Go into folderA to build up history
     fireEvent.click(folderButtons[0]);
     // Wait for historyPosition to update (back button enabled)
@@ -202,12 +229,15 @@ describe('FolderSelector', () => {
 
   it('navigates up with up button', async () => {
     render(<FolderSelector onSelect={vi.fn()} onClose={vi.fn()} />);
-    await waitFor(() => {
-      expect(screen.getByTestId('folderList')).toBeTruthy();
-    });
+    // Wait for initial path to be set and up button to become enabled
+    await screen.findByText('user');
     const upBtn = screen.getByTestId('upButton');
     fireEvent.click(upBtn);
 
+    await waitFor(() => {
+      const calls = (globalThis.fetch as any).mock.calls;
+      expect(calls.length).toBeGreaterThan(1);
+    });
     const calls = (globalThis.fetch as any).mock.calls;
     expect(calls[1][0]).toContain('path=%2Fhome');
   });

@@ -25,6 +25,7 @@ const mockLoadConversation = vi.fn();
 vi.mock('../context/ChatContext.tsx', () => ({
   BASE_URL: 'http://localhost:8000',
   useChat: () => ({
+    settings: { settings: { streaming: true, secured_streaming: false } },
     apiReady: mockApiReady,
     error: mockError,
     conversationList: mockConversationList,
@@ -33,9 +34,13 @@ vi.mock('../context/ChatContext.tsx', () => ({
     apiKey: 'fake-key',
     messages: mockMessages,
     setMessages: mockSetMessages,
+    sendMessage: vi.fn(async () => 'ok'),
+    sendSecuredStreamingMessage: vi.fn(),
     sendStreamingMessage: mockSendStreamingMessage,
     projectMetadata: mockProjectMetadata,
-    setProjectMetadata: mockSetProjectMetadata
+    setProjectMetadata: mockSetProjectMetadata,
+    isAuthenticated: true,
+    logout: vi.fn()
   }),
   __esModule: true
 }));
@@ -146,9 +151,12 @@ describe('App', () => {
 
   it('shows and closes FolderSelector modal', async () => {
     render(<App />);
-    // Find and click project/folder button (adjust selector for your actual markup if needed)
-    const projectBtn = screen.getByTestId('project-path-selector');
-    fireEvent.click(projectBtn);
+    // Find and click project/folder button (note: component uses data-testId with capital I)
+    const projectBtn = document.querySelector(
+      '[data-testId="project-path-selector"]'
+    ) as HTMLButtonElement | null;
+    expect(projectBtn).toBeTruthy();
+    projectBtn && fireEvent.click(projectBtn);
 
     expect(screen.getByTestId('folder-selector')).toBeTruthy();
     screen.getByText('Select Folder').click();
