@@ -33,3 +33,4 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: tauri-ui/coverage
           flags: frontend
+          fail_ci_if_error: true

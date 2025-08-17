@@ -1,0 +1,26 @@
+codecov:
+  require_ci_to_pass: false
+
+flag_management:
+  default_rules:
+    carryforward: true     # carry the last known value when a flag is missing on a commit
+  individual_flags:
+    - name: frontend
+      carryforward: true
+    - name: backend
+      carryforward: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+      frontend:
+        flags: [frontend]
+        target: auto
+      backend:
+        flags: [backend]
+        target: auto
+    patch:
+      default:
+        target: auto
