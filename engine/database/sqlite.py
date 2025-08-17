@@ -147,7 +147,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 starred INTEGER DEFAULT 0,
                 archived INTEGER DEFAULT 0,
                 tags TEXT,
-                data TEXT NOT NULL,
+                data TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
             )
@@ -182,6 +182,20 @@ class SQLiteAdapter(DatabaseAdapter):
             )
             ''')
 
+            # Create conversation_messages table (normalized message storage)
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                idx INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                meta TEXT,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            )
+            ''')
+
             # Create indexes
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_settings_user_id ON settings(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id)')
@@ -189,6 +203,8 @@ class SQLiteAdapter(DatabaseAdapter):
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_category_id ON conversations(category_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_starred ON conversations(starred)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_archived ON conversations(archived)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_conv_msgs_conv_id ON conversation_messages(conversation_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_conv_msgs_idx ON conversation_messages(conversation_id, idx)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_facts_user_id ON memory_facts(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_facts_private ON memory_facts(private)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)')
@@ -679,19 +695,77 @@ class SQLiteAdapter(DatabaseAdapter):
                 self.connect()
 
             cursor = self.connection.cursor()
+            # First, get conversation metadata (title, tags, etc.) and any legacy data blob
             cursor.execute(
                 """
-                SELECT data FROM conversations
-                WHERE user_id = ? AND id = ?
+                SELECT c.title, c.tags, c.starred, c.archived, c.updated_at, c.created_at,
+                       cat.name as category, c.data
+                FROM conversations c
+                LEFT JOIN categories cat ON c.category_id = cat.id
+                WHERE c.user_id = ? AND c.id = ?
                 """,
                 (user_id, conversation_id)
             )
+            meta_row = cursor.fetchone()
+            if not meta_row:
+                return None
 
-            row = cursor.fetchone()
+            # Attempt to load messages from normalized table
+            cursor.execute(
+                """
+                SELECT idx, role, content, created_at, meta
+                FROM conversation_messages
+                WHERE conversation_id = ?
+                ORDER BY idx ASC
+                """,
+                (conversation_id,)
+            )
+            message_rows = cursor.fetchall()
 
-            if row:
-                return json.loads(row["data"])
-            return None
+            history: List[Dict[str, Any]] = []
+            if message_rows:
+                for r in message_rows:
+                    msg: Dict[str, Any] = {
+                        "role": r["role"],
+                        "content": r["content"],
+                    }
+                    # keep optional fields for compatibility
+                    if r["created_at"]:
+                        msg["created_at"] = r["created_at"]
+                    if r["meta"]:
+                        try:
+                            msg["meta"] = json.loads(r["meta"])
+                        except Exception:
+                            msg["meta"] = r["meta"]
+                    history.append(msg)
+            else:
+                # Fallback to legacy blob
+                blob = meta_row["data"]
+                if blob:
+                    try:
+                        legacy = json.loads(blob)
+                        history = legacy.get("history") or legacy.get("messages") or []
+                    except Exception:
+                        history = []
+
+            # Build return structure merging meta + history
+            result: Dict[str, Any] = {
+                "history": history,
+                "title": meta_row["title"],
+                "category": meta_row["category"] or "General",
+                "starred": bool(meta_row["starred"]),
+                "archived": bool(meta_row["archived"]),
+                "updated_at": meta_row["updated_at"],
+                "created_at": meta_row["created_at"],
+                "tags": []
+            }
+            if meta_row["tags"]:
+                try:
+                    result["tags"] = json.loads(meta_row["tags"])
+                except Exception:
+                    result["tags"] = []
+
+            return result
         except sqlite3.Error as e:
             self.logger.error(f"Error loading conversation: {e}")
             return None
@@ -802,6 +876,47 @@ class SQLiteAdapter(DatabaseAdapter):
                         1 if starred else 0, 1 if archived else 0, json.dumps(tags), json.dumps(data)
                     )
                 )
+
+            # Normalize messages into conversation_messages table
+            messages = data.get("history")
+            if not isinstance(messages, list):
+                # also support 'messages' key
+                messages = data.get("messages")
+            if messages is None:
+                messages = []
+            if not isinstance(messages, list):
+                raise ValueError("Conversation history must be a list")
+
+            # Replace strategy: delete existing and bulk insert new
+            cursor.execute(
+                "DELETE FROM conversation_messages WHERE conversation_id = ?",
+                (conversation_id,)
+            )
+
+            idx_counter = 0
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role")
+                content = msg.get("content")
+                if role is None or content is None:
+                    continue
+                created_at = msg.get("created_at") or now
+                meta = msg.get("meta")
+                meta_str = None
+                if meta is not None:
+                    try:
+                        meta_str = json.dumps(meta)
+                    except Exception:
+                        meta_str = str(meta)
+                cursor.execute(
+                    """
+                    INSERT INTO conversation_messages (id, conversation_id, idx, role, content, created_at, meta)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (str(uuid.uuid4()), conversation_id, idx_counter, role, str(content), created_at, meta_str)
+                )
+                idx_counter += 1
 
             self.connection.commit()
             return True

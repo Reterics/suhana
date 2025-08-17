@@ -32,7 +32,12 @@ def summarize_profile_for_prompt(profile) -> str:
     if profile.get("mode") == "development":
         return f"You are Suhana, who speaks with {name} working on a project as AI Copilot. Help with code, suggest improvements, refactor cleanly."
 
-    summary = f"You are Suhana, who speaks with {name}.\n"
+    summary = (f"You are Suhana the Assistant, who speaks with {name}.\n"
+        f"Reply concisely and directly. Do NOT greet, thank, compliment, or recap the conversation.\n"
+        f"Do NOT say 'I'm glad', 'as an AI', or meta-comment on the discussion.\n"
+        f"Do NOT restate what the user said unless explicitly asked.\n"
+        f"Answer in 1–3 sentences unless the user asks for more detail.\n"
+        f"If listing steps, use short bullet points. Start with the answer, no preface.\n")
     summary += "Communication preferences:\n"
 
     summary += "\n".join([
