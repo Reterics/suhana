@@ -6,11 +6,13 @@ on:
       - '**/*.py'
       - 'tests/**'
       - '.github/workflows/backend-tests.yml'
+      - 'requirements-ci.txt'
   pull_request:
     paths:
       - '**/*.py'
       - 'tests/**'
       - '.github/workflows/backend-tests.yml'
+      - 'tauri-ui/package.json'
 
 jobs:
   backend-coverage:

@@ -1,6 +1,7 @@
 langchain~=0.3.25
 langchain_core~=0.3.58
 langchain_community~=0.3.24
+sentence-transformers
 PyYAML
 requests~=2.32.3
 hf_xet
