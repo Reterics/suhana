@@ -198,3 +198,177 @@ describe('ChatContext', () => {
     expect(testChat!.error).toMatch(/fail/);
   });
 });
+
+describe('ChatContext - extended', () => {
+  let originalFetch: typeof fetch;
+  let localStorageMock: Storage;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    localStorageMock = (() => {
+      let store: Record<string, string> = {};
+      return {
+        getItem: (k: string) => store[k] || null,
+        setItem: (k: string, v: string) => {
+          store[k] = v;
+        },
+        removeItem: (k: string) => {
+          delete store[k];
+        },
+        clear: () => {
+          store = {};
+        }
+      } as Storage;
+    })();
+    globalThis.localStorage = localStorageMock;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('login and logout manage session and apiKey', async () => {
+    let ctx: ReturnType<typeof useChat> | null = null;
+    function Consumer() {
+      ctx = useChat();
+      return <div />;
+    }
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
+    await waitFor(() => !!ctx);
+
+    expect(ctx!.isAuthenticated).toBe(false);
+    ctx!.login('u1', 'k1');
+    await waitFor(() => ctx!.isAuthenticated === true);
+    expect(ctx!.isAuthenticated).toBe(true);
+    expect(ctx!.apiKey).toBe('k1');
+    // setApiKey updates apiKey within session
+    ctx!.setApiKey('k2');
+    await waitFor(() => ctx!.apiKey === 'k2');
+    expect(ctx!.apiKey).toBe('k2');
+    // localStorage was set
+    expect(localStorage.getItem('suhana_user_session')).toMatch(/"userId":"u1"/);
+
+    ctx!.logout();
+    await waitFor(() => ctx!.isAuthenticated === false);
+    expect(ctx!.isAuthenticated).toBe(false);
+    expect(localStorage.getItem('suhana_user_session')).toBeNull();
+  });
+
+  it('updateSettings posts and updates state', async () => {
+    let ctx: ReturnType<typeof useChat> | null = null;
+    function Consumer() {
+      ctx = useChat();
+      return <div />;
+    }
+
+    // Mock POST /settings/u1 response
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ settings: { llm_backend: 'ollama', llm_model: 'llama3', openai_model: 'gpt-4o-mini', voice: false, streaming: true, secured_streaming: false, openai_api_key: '' } })
+    }) as any;
+
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
+    await waitFor(() => !!ctx);
+
+    // login after mount to avoid provider auto-fetch
+    ctx!.login('u1', 'k');
+    await waitFor(() => ctx!.isAuthenticated === true);
+
+    const updated = await ctx!.updateSettings({ llm_options: { ollama: ['llama3'], openai: ['gpt-4o-mini'] } as any });
+    expect(updated.settings.llm_model).toBe('llama3');
+    expect(updated.llm_options.openai[0]).toBe('gpt-4o-mini');
+  });
+
+  it('profile endpoints: getProfile and updateProfile', async () => {
+    const profile = { name: 'Alice', created_at: '', last_login: null, role: 'user', avatar: null, preferences: {} as any, personalization: {} as any, privacy: {} as any, history: [] };
+
+    // Order: first GET profile, then POST update
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ profile }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ profile: { ...profile, name: 'Alice B' } }) });
+
+    let ctx: ReturnType<typeof useChat> | null = null;
+    function Consumer() {
+      ctx = useChat();
+      return <div />;
+    }
+    render(
+      <ChatProvider>
+        <Consumer />
+      </ChatProvider>
+    );
+    await waitFor(() => !!ctx);
+
+    // authenticate after mount
+    ctx!.login('u2', 'k');
+    await waitFor(() => ctx!.isAuthenticated === true);
+
+    const p1 = await ctx!.getProfile();
+    expect(p1.profile.name).toBe('Alice');
+
+    const p2 = await ctx!.updateProfile('u2', { name: 'Alice B' });
+    expect(p2.profile.name).toBe('Alice B');
+  });
+
+  it('registerUser success and failure', async () => {
+    // Success
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ user_id: 'u3', api_key: 'k3' }) }) as any;
+    let ctx: ReturnType<typeof useChat> | null = null;
+    function Consumer() { ctx = useChat(); return <div />; }
+    render(<ChatProvider><Consumer /></ChatProvider>);
+    await waitFor(() => !!ctx);
+
+    const r = await ctx!.registerUser('bob', 'pw', 'Bob');
+    expect(r.user_id).toBe('u3');
+
+    // Failure branch
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({ ok: false, text: async () => 'bad' }) as any;
+    await expect(ctx!.registerUser('bob', 'pw')).rejects.toThrow(/bad|Registration failed/);
+    // error state updated
+    expect(ctx!.error).toMatch(/Registration failed/);
+  });
+
+  it('getFolders returns data', async () => {
+    const payload = {
+      current: '/home/user', parent: '/home', path_parts: [{ name: 'home', path: '/home' }], subfolders: [], separator: '/', recent_projects: []
+    };
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => payload }) as any;
+
+    let ctx: ReturnType<typeof useChat> | null = null;
+    function Consumer() { ctx = useChat(); return <div />; }
+    render(<ChatProvider><Consumer /></ChatProvider>);
+    await waitFor(() => !!ctx);
+
+    const res = await ctx!.getFolders('/home/user');
+    expect(res?.current).toBe('/home/user');
+  });
+
+  it('sendSecuredStreamingMessage delegates to consumeEncryptedStream', async () => {
+    // Mock the module used inside ChatContext
+    const tokens: string[] = [];
+    const mod = await import('../utils/client-stream');
+    const spy = vi.spyOn(mod, 'consumeEncryptedStream').mockResolvedValue(undefined as any).mockImplementation(async (_url, _key, _cid, onText) => {
+      onText('hello-secure');
+      return undefined as any;
+    });
+
+    let ctx: ReturnType<typeof useChat> | null = null;
+    function Consumer() { ctx = useChat(); return <div />; }
+    render(<ChatProvider><Consumer /></ChatProvider>);
+    await waitFor(() => !!ctx);
+
+    await ctx!.sendSecuredStreamingMessage('hi', t => tokens.push(t));
+    expect(tokens).toEqual(['hello-secure']);
+    expect(spy).toHaveBeenCalled();
+  });
+});
