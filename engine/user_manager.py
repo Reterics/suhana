@@ -34,6 +34,11 @@ class UserManager:
             "can_manage_users": False,
             "can_manage_settings": False,
             "can_access_all_conversations": False,
+        },
+        "guest": {
+            "can_manage_users": False,
+            "can_manage_settings": False,
+            "can_access_all_conversations": False,
         }
     }
 
@@ -116,6 +121,15 @@ class UserManager:
         profile["name"] = name or username
         profile["created_at"] = datetime.now().replace(tzinfo=None).isoformat()
         profile["role"] = role if role in self.ROLES else "user"
+        # If creating a guest, ensure privacy defaults are more restrictive
+        if profile["role"] == "guest":
+            try:
+                if "privacy" not in profile:
+                    profile["privacy"] = self.DEFAULT_PROFILE["privacy"].copy()
+                profile["privacy"]["store_history"] = False
+                profile["privacy"]["allow_analytics"] = False
+            except Exception:
+                pass
 
         # Hash the password
         salt = secrets.token_hex(16)
@@ -139,6 +153,14 @@ class UserManager:
 
             if not created_user_id:
                 return False, f"Failed to create user '{username}' in database"
+
+            # Register user role with access control manager
+            try:
+                from engine.security.access_control import get_access_control_manager
+                acm = get_access_control_manager()
+                acm.add_user(username, role)
+            except Exception as e:
+                logger.warning(f"Failed to register user '{username}' with access control: {e}")
 
             # Create user-specific settings (empty for now, will inherit from global)
             self.settings_manager.save_settings({"version": 1}, username)

@@ -13,6 +13,7 @@ export function Login({ onClose, onSwitchToRegister }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
 
   const handleLogin = async (e: Event) => {
     e.preventDefault();
@@ -98,20 +99,44 @@ export function Login({ onClose, onSwitchToRegister }: LoginProps) {
             />
           </div>
 
-          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+          <div className="flex flex-col gap-3 pt-2 border-t border-gray-100">
+            <div className="flex justify-between items-center">
+              <button
+                type="button"
+                className="text-sm text-gray-600 hover:text-black"
+                onClick={onSwitchToRegister}
+              >
+                Register
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-900 shadow-sm disabled:opacity-50"
+              >
+                {isLoading ? 'Logging in...' : 'Login'}
+              </button>
+            </div>
             <button
               type="button"
-              className="text-sm text-gray-600 hover:text-black"
-              onClick={onSwitchToRegister}
+              onClick={async () => {
+                setError('');
+                setGuestLoading(true);
+                try {
+                  const res = await fetch('http://localhost:8000/guest_login', { method: 'POST' });
+                  if (!res.ok) throw new Error((await res.text()) || 'Guest login failed');
+                  const data = await res.json();
+                  login(data.user_id, data.api_key);
+                  onClose();
+                } catch (err) {
+                  setError(`Guest login failed: ${(err as Error).message}`);
+                } finally {
+                  setGuestLoading(false);
+                }
+              }}
+              disabled={guestLoading}
+              className="w-full text-sm px-4 py-2 rounded border border-gray-300 text-gray-800 hover:bg-gray-50 disabled:opacity-50"
             >
-              Register
-            </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-900 shadow-sm disabled:opacity-50"
-            >
-              {isLoading ? 'Logging in...' : 'Login'}
+              {guestLoading ? 'Continuing as Guest...' : 'Continue as Guest'}
             </button>
           </div>
         </form>

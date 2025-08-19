@@ -154,6 +154,10 @@ def _get_conversation_profile(conversation_id: str, user_id: str):
     Returns:
         Tuple of (conversation_id, profile)
     """
+    # Normalize empty or whitespace-only IDs to None to avoid DB PK collisions
+    if isinstance(conversation_id, str) and not conversation_id.strip():
+        conversation_id = None
+
     # If conversation_id is not provided, create a new conversation
     if conversation_id is None:
         conversation_id = conversation_store.create_new_conversation(user_id)
@@ -992,6 +996,69 @@ def register_user(user_data: UserRegistration):
         "message": message,
         "api_key": new_key
     }
+
+@app.post("/guest_login")
+def guest_login():
+    """
+    Create or reuse a temporary Guest user and return an API key.
+
+    Returns:
+        Dictionary containing the guest user ID and API key
+    """
+    import secrets
+    from engine.api_key_store import get_api_key_manager, DEFAULT_RATE_LIMIT
+    from engine.security.access_control import Role, get_access_control_manager
+
+    # Generate a simple guest username
+    # Try a few times to avoid collision
+    username = None
+    for _ in range(5):
+        candidate = f"guest_{secrets.token_hex(3)}"
+        # If user exists, reuse that id; else create
+        user = user_manager.db.get_user(candidate)
+        if user:
+            username = candidate
+            break
+        else:
+            # Create guest user with random password
+            pwd = secrets.token_urlsafe(8)
+            ok, msg = user_manager.create_user(candidate, pwd, name="Guest", role="guest")
+            if ok:
+                username = candidate
+                break
+    if username is None:
+        # Fallback: ensure some guest exists or raise
+        raise HTTPException(status_code=500, detail="Failed to create guest user")
+
+    # Ensure access control has this user as guest (in case it pre-existed)
+    try:
+        acm = get_access_control_manager()
+        acm.set_user_role(username, Role.GUEST)
+    except Exception:
+        pass
+
+    api_key_manager = get_api_key_manager()
+
+    # Check if user already has an API key
+    user_keys = api_key_manager.get_user_keys(username)
+    if user_keys:
+        api_key = user_keys[0]["key"]
+    else:
+        # Create a limited rate-limit key and mark permission as guest (informational)
+        api_key = api_key_manager.create_api_key(
+            user_id=username,
+            name="Guest API Key",
+            rate_limit=max(15, int(DEFAULT_RATE_LIMIT/2)),
+            permissions=["guest"]
+        )
+
+    profile = user_manager.get_profile(username)
+    return {
+        "user_id": username,
+        "api_key": api_key,
+        "profile": profile
+    }
+
 
 @app.post("/login")
 def login_user(user_data: UserLogin):
