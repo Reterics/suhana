@@ -114,6 +114,9 @@ class MongoDBAdapter(DatabaseAdapter):
             if "conversations" not in self.db.list_collection_names():
                 self.db.create_collection("conversations")
 
+            if "conversation_messages" not in self.db.list_collection_names():
+                self.db.create_collection("conversation_messages")
+
             if "memory_facts" not in self.db.list_collection_names():
                 self.db.create_collection("memory_facts")
 
@@ -130,6 +133,9 @@ class MongoDBAdapter(DatabaseAdapter):
             self.db.conversations.create_index("starred")
             self.db.conversations.create_index("archived")
             self.db.conversations.create_index([("user_id", pymongo.ASCENDING), ("id", pymongo.ASCENDING)], unique=True)
+
+            self.db.conversation_messages.create_index("conversation_id")
+            self.db.conversation_messages.create_index([("conversation_id", pymongo.ASCENDING), ("idx", pymongo.ASCENDING)], unique=False)
 
             self.db.memory_facts.create_index("user_id")
             self.db.memory_facts.create_index("private")
@@ -600,14 +606,57 @@ class MongoDBAdapter(DatabaseAdapter):
             if not self.db:
                 self.connect()
 
+            # Fetch conversation meta with category name
             conversation = self.db.conversations.find_one({
                 "user_id": user_id,
                 "id": conversation_id
             })
+            if not conversation:
+                return None
 
-            if conversation:
-                return conversation["data"]
-            return None
+            category_name = None
+            if conversation.get("category_id"):
+                cat = self.db.categories.find_one({"id": conversation["category_id"]})
+                if cat:
+                    category_name = cat.get("name")
+
+            # Try normalized messages first
+            msgs = list(self.db.conversation_messages.find({
+                "conversation_id": conversation_id
+            }).sort("idx", pymongo.ASCENDING))
+
+            history: List[Dict[str, Any]] = []
+            if msgs:
+                for r in msgs:
+                    msg: Dict[str, Any] = {
+                        "role": r.get("role"),
+                        "content": r.get("content"),
+                    }
+                    if r.get("created_at"):
+                        msg["created_at"] = r.get("created_at")
+                    if r.get("meta") is not None:
+                        msg["meta"] = r.get("meta")
+                    history.append(msg)
+            else:
+                blob = conversation.get("data")
+                if blob:
+                    try:
+                        legacy = blob if isinstance(blob, dict) else json.loads(blob)
+                        history = legacy.get("history") or legacy.get("messages") or []
+                    except Exception:
+                        history = []
+
+            result: Dict[str, Any] = {
+                "history": history,
+                "title": conversation.get("title"),
+                "category": category_name or "General",
+                "starred": bool(conversation.get("starred")),
+                "archived": bool(conversation.get("archived")),
+                "updated_at": conversation.get("updated_at"),
+                "created_at": conversation.get("created_at"),
+                "tags": conversation.get("tags") or []
+            }
+            return result
         except Exception as e:
             self.logger.error(f"Error loading conversation: {e}")
             return None
@@ -629,7 +678,29 @@ class MongoDBAdapter(DatabaseAdapter):
                 self.connect()
 
             # Extract metadata from conversation data
-            title = data.get("title", "New Conversation")
+            raw_title = data.get("title")
+            def _derive_title() -> str:
+                placeholders = {"Untitled Conversation", "New Conversation", ""}
+                if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip() not in placeholders:
+                    return raw_title.strip()
+                def first_user_text(msgs):
+                    if not isinstance(msgs, list):
+                        return None
+                    for m in msgs:
+                        if isinstance(m, dict) and m.get("role") == "user":
+                            content = m.get("content")
+                            if isinstance(content, str) and content.strip():
+                                return content.strip()
+                    return None
+                text = first_user_text(data.get("history")) or first_user_text(data.get("messages"))
+                if not text:
+                    return "Untitled Conversation"
+                text = " ".join(text.split())
+                max_len = 60
+                if len(text) > max_len:
+                    return text[:max_len].rstrip() + "..."
+                return text
+            title = _derive_title()
             category_name = data.get("category", "General")
             starred = data.get("starred", False)
             archived = data.get("archived", False)
@@ -662,7 +733,7 @@ class MongoDBAdapter(DatabaseAdapter):
 
             if existing_conversation:
                 # Update existing conversation
-                result = self.db.conversations.update_one(
+                self.db.conversations.update_one(
                     {
                         "user_id": user_id,
                         "id": conversation_id
@@ -679,10 +750,9 @@ class MongoDBAdapter(DatabaseAdapter):
                         }
                     }
                 )
-                return result.modified_count > 0 or result.matched_count > 0
             else:
                 # Insert new conversation
-                result = self.db.conversations.insert_one({
+                self.db.conversations.insert_one({
                     "id": conversation_id,
                     "user_id": user_id,
                     "category_id": category_id,
@@ -694,7 +764,44 @@ class MongoDBAdapter(DatabaseAdapter):
                     "tags": tags,
                     "data": data
                 })
-                return result.inserted_id is not None
+
+            # Normalize messages into conversation_messages collection
+            messages = data.get("history")
+            if not isinstance(messages, list):
+                messages = data.get("messages")
+            if messages is None:
+                messages = []
+            if not isinstance(messages, list):
+                raise ValueError("Conversation history must be a list")
+
+            # Replace strategy: delete existing and bulk insert new
+            self.db.conversation_messages.delete_many({"conversation_id": conversation_id})
+
+            bulk = []
+            idx_counter = 0
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role")
+                content = msg.get("content")
+                if role is None or content is None:
+                    continue
+                created_at = msg.get("created_at") or now
+                meta = msg.get("meta")
+                bulk.append({
+                    "id": str(uuid.uuid4()),
+                    "conversation_id": conversation_id,
+                    "idx": idx_counter,
+                    "role": role,
+                    "content": str(content),
+                    "created_at": created_at,
+                    "meta": meta
+                })
+                idx_counter += 1
+            if bulk:
+                self.db.conversation_messages.insert_many(bulk)
+
+            return True
         except Exception as e:
             self.logger.error(f"Error saving conversation: {e}")
             return False

@@ -147,6 +147,19 @@ class PostgresAdapter(DatabaseAdapter):
             )
             ''')
 
+            # Create conversation_messages table (normalized message storage)
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                idx INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL,
+                meta JSONB
+            )
+            ''')
+
             # Create memory_facts table
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS memory_facts (
@@ -181,6 +194,8 @@ class PostgresAdapter(DatabaseAdapter):
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_category_id ON conversations(category_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_starred ON conversations(starred)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_archived ON conversations(archived)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_conv_msgs_conv_id ON conversation_messages(conversation_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_conv_msgs_idx ON conversation_messages(conversation_id, idx)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_facts_user_id ON memory_facts(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_facts_private ON memory_facts(private)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)')
@@ -652,19 +667,67 @@ class PostgresAdapter(DatabaseAdapter):
                 self.connect()
 
             cursor = self.connection.cursor(cursor_factory=RealDictCursor)
+            # Get conversation metadata and any legacy data blob
             cursor.execute(
                 """
-                SELECT data FROM conversations
-                WHERE user_id = %s AND id = %s
+                SELECT c.title, c.tags, c.starred, c.archived, c.updated_at, c.created_at,
+                       cat.name as category, c.data
+                FROM conversations c
+                LEFT JOIN categories cat ON c.category_id = cat.id
+                WHERE c.user_id = %s AND c.id = %s
                 """,
                 (user_id, conversation_id)
             )
+            meta_row = cursor.fetchone()
+            if not meta_row:
+                return None
 
-            row = cursor.fetchone()
+            # Attempt to load messages from normalized table
+            cursor2 = self.connection.cursor(cursor_factory=RealDictCursor)
+            cursor2.execute(
+                """
+                SELECT idx, role, content, created_at, meta
+                FROM conversation_messages
+                WHERE conversation_id = %s
+                ORDER BY idx ASC
+                """,
+                (conversation_id,)
+            )
+            message_rows = cursor2.fetchall()
 
-            if row:
-                return row["data"]
-            return None
+            history: List[Dict[str, Any]] = []
+            if message_rows:
+                for r in message_rows:
+                    msg: Dict[str, Any] = {
+                        "role": r["role"],
+                        "content": r["content"],
+                    }
+                    if r.get("created_at"):
+                        msg["created_at"] = r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else r["created_at"]
+                    if r.get("meta") is not None:
+                        msg["meta"] = r["meta"]
+                    history.append(msg)
+            else:
+                # Fallback to legacy blob
+                blob = meta_row.get("data")
+                if blob:
+                    try:
+                        legacy = blob if isinstance(blob, dict) else json.loads(blob)
+                        history = legacy.get("history") or legacy.get("messages") or []
+                    except Exception:
+                        history = []
+
+            result: Dict[str, Any] = {
+                "history": history,
+                "title": meta_row.get("title"),
+                "category": meta_row.get("category") or "General",
+                "starred": bool(meta_row.get("starred")),
+                "archived": bool(meta_row.get("archived")),
+                "updated_at": meta_row.get("updated_at").isoformat() if hasattr(meta_row.get("updated_at"), "isoformat") else meta_row.get("updated_at"),
+                "created_at": meta_row.get("created_at").isoformat() if hasattr(meta_row.get("created_at"), "isoformat") else meta_row.get("created_at"),
+                "tags": meta_row.get("tags") or []
+            }
+            return result
         except psycopg2.Error as e:
             self.logger.error(f"Error loading conversation: {e}")
             return None
@@ -688,7 +751,29 @@ class PostgresAdapter(DatabaseAdapter):
             cursor = self.connection.cursor()
 
             # Extract metadata from conversation data
-            title = data.get("title", "New Conversation")
+            raw_title = data.get("title")
+            def _derive_title() -> str:
+                placeholders = {"Untitled Conversation", "New Conversation", ""}
+                if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip() not in placeholders:
+                    return raw_title.strip()
+                def first_user_text(msgs):
+                    if not isinstance(msgs, list):
+                        return None
+                    for m in msgs:
+                        if isinstance(m, dict) and m.get("role") == "user":
+                            content = m.get("content")
+                            if isinstance(content, str) and content.strip():
+                                return content.strip()
+                    return None
+                text = first_user_text(data.get("history")) or first_user_text(data.get("messages"))
+                if not text:
+                    return "Untitled Conversation"
+                text = " ".join(text.split())
+                max_len = 60
+                if len(text) > max_len:
+                    return text[:max_len].rstrip() + "..."
+                return text
+            title = _derive_title()
             category_name = data.get("category", "General")
             starred = data.get("starred", False)
             archived = data.get("archived", False)
@@ -749,6 +834,53 @@ class PostgresAdapter(DatabaseAdapter):
                         starred, archived, json.dumps(tags), json.dumps(data)
                     )
                 )
+
+            # Normalize messages into conversation_messages table
+            messages = data.get("history")
+            if not isinstance(messages, list):
+                messages = data.get("messages")
+            if messages is None:
+                messages = []
+            if not isinstance(messages, list):
+                raise ValueError("Conversation history must be a list")
+
+            # Replace strategy: delete existing and bulk insert new
+            cursor.execute(
+                "DELETE FROM conversation_messages WHERE conversation_id = %s",
+                (conversation_id,)
+            )
+
+            def _to_dt(val):
+                if val is None:
+                    return now
+                if hasattr(val, 'isoformat'):
+                    return val
+                if isinstance(val, str):
+                    try:
+                        return datetime.fromisoformat(val)
+                    except Exception:
+                        return now
+                return now
+
+            idx_counter = 0
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role")
+                content = msg.get("content")
+                if role is None or content is None:
+                    continue
+                created_at = _to_dt(msg.get("created_at"))
+                meta = msg.get("meta")
+                meta_json = json.dumps(meta) if meta is not None else None
+                cursor.execute(
+                    """
+                    INSERT INTO conversation_messages (id, conversation_id, idx, role, content, created_at, meta)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (str(uuid.uuid4()), conversation_id, idx_counter, role, str(content), created_at, meta_json)
+                )
+                idx_counter += 1
 
             self.connection.commit()
             return True
