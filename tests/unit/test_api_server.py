@@ -1,8 +1,84 @@
+import sys, types
 import pytest
-from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
-from api_server import app, verify_api_key, ApiKeyCreate, UserRegistration, UserLogin, ProfileUpdate, user_manager
+
+if 'cryptography' not in sys.modules:
+    crypto = types.ModuleType('cryptography')
+    sys.modules['cryptography'] = crypto
+
+    hazmat = types.ModuleType('cryptography.hazmat')
+    sys.modules['cryptography.hazmat'] = hazmat
+
+    primitives = types.ModuleType('cryptography.hazmat.primitives')
+    sys.modules['cryptography.hazmat.primitives'] = primitives
+
+    # hashes stub
+    hashes = types.ModuleType('cryptography.hazmat.primitives.hashes')
+    sys.modules['cryptography.hazmat.primitives.hashes'] = hashes
+    class SHA256: ...
+    hashes.SHA256 = SHA256
+
+    # kdf.hkdf stub
+    kdf = types.ModuleType('cryptography.hazmat.primitives.kdf')
+    sys.modules['cryptography.hazmat.primitives.kdf'] = kdf
+    hkdf = types.ModuleType('cryptography.hazmat.primitives.kdf.hkdf')
+    sys.modules['cryptography.hazmat.primitives.kdf.hkdf'] = hkdf
+    class HKDF:
+        def __init__(self, algorithm=None, length=32, salt=None, info=None):
+            self.length = length
+        def derive(self, shared_secret: bytes) -> bytes:
+            # return deterministic 32 bytes for tests
+            return (b'\x00' * self.length)
+    hkdf.HKDF = HKDF
+
+    # ciphers.aead AESGCM stub
+    ciphers = types.ModuleType('cryptography.hazmat.primitives.ciphers')
+    sys.modules['cryptography.hazmat.primitives.ciphers'] = ciphers
+    aead = types.ModuleType('cryptography.hazmat.primitives.ciphers.aead')
+    sys.modules['cryptography.hazmat.primitives.ciphers.aead'] = aead
+    class AESGCM:
+        def __init__(self, key: bytes):
+            self.key = key
+        def encrypt(self, iv: bytes, data: bytes, aad: bytes) -> bytes:
+            # return placeholder bytes; tests don't assert ciphertext
+            return b'ciphertext'
+    aead.AESGCM = AESGCM
+
+    # serialization stubs
+    serialization = types.ModuleType('cryptography.hazmat.primitives.serialization')
+    sys.modules['cryptography.hazmat.primitives.serialization'] = serialization
+    class Encoding:
+        Raw = object()
+    class PublicFormat:
+        Raw = object()
+    serialization.Encoding = Encoding
+    serialization.PublicFormat = PublicFormat
+
+    # asymmetric.x25519 stubs
+    asymmetric = types.ModuleType('cryptography.hazmat.primitives.asymmetric')
+    sys.modules['cryptography.hazmat.primitives.asymmetric'] = asymmetric
+    x25519 = types.ModuleType('cryptography.hazmat.primitives.asymmetric.x25519')
+    sys.modules['cryptography.hazmat.primitives.asymmetric.x25519'] = x25519
+    class X25519PrivateKey:
+        @staticmethod
+        def generate():
+            return X25519PrivateKey()
+        def public_key(self):
+            return self
+        def public_bytes(self, *args, **kwargs) -> bytes:
+            return b'\x00' * 32
+        def exchange(self, peer_public) -> bytes:
+            return b'\x01' * 32
+    class X25519PublicKey:
+        @staticmethod
+        def from_public_bytes(data: bytes):
+            return X25519PublicKey()
+    x25519.X25519PrivateKey = X25519PrivateKey
+    x25519.X25519PublicKey = X25519PublicKey
+
+from api_server import app, verify_api_key
+from unittest.mock import MagicMock, patch
 from unittest import mock
 
 # Override the dependency in the app
