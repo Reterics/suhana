@@ -18,33 +18,6 @@ def mock_verify_api_key():
     # The dependency is already overridden at the app level
     return "test_user_id"
 
-# API Key Management Tests
-# This test was removed because it was causing the test runner to hang
-# def test_list_api_keys(mock_verify_api_key):
-#     """Test listing API keys for a user."""
-#     with patch("engine.api_key_store.get_api_key_manager") as mock_get_api_key_manager, \
-#          patch("engine.security.access_control.check_permission", return_value=False) as mock_check_permission:
-#         # Setup the mock
-#         mock_api_key_manager = MagicMock()
-#         mock_get_api_key_manager.return_value = mock_api_key_manager
-#         mock_api_key_manager.get_user_keys.return_value = [
-#             {"key": "api_key_1", "name": "Test Key 1", "created_at": "2025-01-01T00:00:00"},
-#             {"key": "api_key_2", "name": "Test Key 2", "created_at": "2025-01-02T00:00:00"}
-#         ]
-#
-#         # Make the request
-#         response = client.get("/api-keys")
-#
-#         # Verify the response
-#         assert response.status_code == 200
-#         data = response.json()
-#         assert len(data["keys"]) == 2
-#         assert data["keys"][0]["key"].startswith("api_key_1")  # Key is partially masked
-#         assert data["keys"][1]["key"].startswith("api_key_2")  # Key is partially masked
-#
-#         # Verify the mock was called correctly
-#         mock_api_key_manager.get_user_keys.assert_called_once_with("test_user_id")
-
 def test_create_api_key(mock_verify_api_key):
     """Test creating a new API key."""
     with patch("engine.api_key_store.get_api_key_manager") as mock_get_api_key_manager, \

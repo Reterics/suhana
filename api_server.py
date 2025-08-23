@@ -5,7 +5,10 @@ from pathlib import Path
 import os
 from typing import List
 
-import whisper
+try:
+    import whisper  # optional, heavy dependency
+except Exception:
+    whisper = None  # allow importing api_server without whisper installed
 from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -51,7 +54,8 @@ app.mount("/assets", StaticFiles(directory=asset_path), name="assets")
 
 # Initialize SettingsManager for per-user settings handling
 settings_manager = SettingsManager()
-model = whisper.load_model("base")
+# Lazy-load whisper model when used; keep import optional to avoid test-time failures
+_model_whisper = None
 
 def verify_api_key(x_api_key: str = Header(...), request: Request = None):
     """
@@ -204,15 +208,28 @@ def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
 
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
+    # Ensure whisper is available
+    global _model_whisper
+    if whisper is None:
+        # Optional dependency not installed
+        raise HTTPException(status_code=501, detail="Speech-to-text not available: whisper is not installed")
+
+    # Lazy-load the model on first use
+    if _model_whisper is None:
+        try:
+            _model_whisper = whisper.load_model("base")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load whisper model: {e}")
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
         contents = await audio.read()
         tmp.write(contents)
         tmp.flush()
         try:
-            result = model.transcribe(tmp.name)
+            result = _model_whisper.transcribe(tmp.name)
         except Exception:
             return {"text": "[transcription failed]"}
-    return {"text": result["text"]}
+    return {"text": result.get("text", "")}
 
 @app.post("/query/stream")
 def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
@@ -845,10 +862,14 @@ def list_api_keys(user_id: str = Depends(verify_api_key), request: Request = Non
         # Regular users can only view their own keys
         keys = api_key_manager.get_user_keys(user_id)
 
-        # Remove the actual key value for security
+        # Remove the actual key value for security (mask long keys only)
         for key in keys:
             if "key" in key:
-                key["key"] = key["key"][:8] + "..." + key["key"][-4:]
+                raw = key["key"]
+                if isinstance(raw, str) and len(raw) > 12:
+                    key["key"] = raw[:8] + "..." + raw[-4:]
+                else:
+                    key["key"] = raw
 
         return {"keys": keys, "user_id": user_id}
 
