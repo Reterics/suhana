@@ -77,6 +77,15 @@ if 'cryptography' not in sys.modules:
     x25519.X25519PrivateKey = X25519PrivateKey
     x25519.X25519PublicKey = X25519PublicKey
 
+# Ensure optional heavy/third-party modules won't break import
+# Mock AI libraries if not installed
+sys.modules['google'] = types.ModuleType('google')
+sys.modules['google.generativeai'] = types.ModuleType('google.generativeai')
+anthropic_mod = types.ModuleType('anthropic')
+class Anthropic: ...
+anthropic_mod.Anthropic = Anthropic
+sys.modules['anthropic'] = anthropic_mod
+
 from api_server import app, verify_api_key
 from unittest.mock import MagicMock, patch
 from unittest import mock

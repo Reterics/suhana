@@ -2,7 +2,7 @@ import sys
 import types
 
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock, call
 
 # Mock the external dependencies
 @pytest.fixture(autouse=True)
@@ -344,3 +344,242 @@ class TestRunAgent:
         # Verify the function called the expected dependencies
         assert mock_input.call_count == 2
         mock_forget_memory.assert_called_once_with("pizza")
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+@patch("engine.agent.transcribe_audio")
+@patch("engine.agent.speak_text")
+@patch("engine.agent.save_conversation")
+def test_voice_toggle_and_speak_text(
+    mock_save, mock_speak, mock_transcribe, mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings
+):
+    """voice on -> use transcribe_audio, respond, speak_text called when voice_mode True."""
+    from engine import agent
+
+    mock_load_settings.return_value = {
+        "llm_backend": "ollama",
+        "llm_model": "llama3",
+        "voice": False,
+        "streaming": False,
+    }
+    mock_create_conv.return_value = "cid"
+    profile = {"history": [], "preferences": {}}
+    mock_load_conv.return_value = profile
+    mock_load_tools.return_value = []
+
+    with patch("engine.agent.input") as mock_input, patch("engine.agent.handle_input") as mock_handle:
+        # input(): turn 1 -> "voice on", later -> "exit" (after voice is turned off)
+        mock_input.side_effect = ["voice on", "exit"]
+        # While voice mode is ON, agent reads from transcribe_audio():
+        #  - 1st: normal prompt
+        #  - 2nd: the "voice off" command
+        mock_transcribe.side_effect = ["Tell me a joke", "voice off"]
+
+        mock_handle.return_value = "A reply"
+
+        agent.run_agent()
+
+        # transcribe_audio called twice (prompt, then "voice off")
+        assert mock_transcribe.call_count == 2
+        # speak_text called for the model reply while voice_mode True
+        mock_speak.assert_called_once_with("A reply")
+        # conversation saved after the normal turn
+        mock_save.assert_called_once_with("cid", profile)
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+def test_streaming_tokens_path(mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings):
+    """settings['streaming']=True -> iterate response tokens and print incrementally."""
+    from engine import agent
+
+    mock_load_settings.return_value = {
+        "llm_backend": "ollama",
+        "llm_model": "llama3",
+        "voice": False,
+        "streaming": True,
+    }
+    mock_create_conv.return_value = "cid"
+    profile = {"history": [], "preferences": {}}
+    mock_load_conv.return_value = profile
+    mock_load_tools.return_value = []
+
+    tokens = iter(["Hello", ", ", "world", "!"])
+    with patch("engine.agent.input") as mock_input, patch("engine.agent.handle_input") as mock_handle, patch(
+        "engine.agent.save_conversation"
+    ) as mock_save:
+        mock_input.side_effect = ["hi", "exit"]
+        mock_handle.return_value = tokens
+
+        agent.run_agent()
+
+        mock_handle.assert_called_once_with("hi", "ollama", profile, mock_load_settings.return_value)
+        mock_save.assert_called_once_with("cid", profile)
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+@patch("engine.agent.list_conversation_meta")
+def test_load_conversation_happy_path(mock_list_meta, mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings):
+    """!load -> shows list and loads selected conversation."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3"}
+    mock_create_conv.return_value = "cid-0"
+    base_profile = {"history": [], "preferences": {}}
+    mock_load_conv.return_value = base_profile
+    mock_load_tools.return_value = []
+    conversations = [
+        {"id": "cid-1", "title": "Work", "last_updated": "2025-08-01"},
+        {"id": "cid-2", "title": "Home", "last_updated": "2025-08-02"},
+    ]
+    mock_list_meta.return_value = conversations
+
+    with patch("engine.agent.input") as mock_input:
+        # Sequence:
+        # "!load" -> then prompt for number -> choose "2" -> then "exit"
+        mock_input.side_effect = ["!load", "2", "exit"]
+        agent.run_agent()
+
+        # It should switch to conversations[1]['id']
+        assert mock_load_conv.call_args_list[-1] == call("cid-2")
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+@patch("engine.agent.list_conversation_meta")
+def test_load_conversation_invalid_selection(
+    mock_list_meta, mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings
+):
+    """!load -> invalid choice should not switch conversation."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3"}
+    first_profile = {"history": [], "preferences": {}}
+    mock_create_conv.return_value = "cid-0"
+    mock_load_conv.return_value = first_profile
+    mock_load_tools.return_value = []
+    mock_list_meta.return_value = [{"id": "cid-1", "title": "X", "last_updated": "2025-08-01"}]
+
+    with patch("engine.agent.input") as mock_input:
+        mock_input.side_effect = ["!load", "99", "exit"]
+        agent.run_agent()
+
+        # Should not have attempted to load a different CID after the invalid choice
+        # Only the initial load should be present (once)
+        assert mock_load_conv.call_count == 1
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+def test_empty_input_is_ignored(mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings):
+    """Empty line should be ignored (continue loop without calling handle_input)."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3"}
+    mock_create_conv.return_value = "cid"
+    mock_load_conv.return_value = {"history": [], "preferences": {}}
+    mock_load_tools.return_value = []
+
+    with patch("engine.agent.input") as mock_input, patch("engine.agent.handle_input") as mock_handle:
+        mock_input.side_effect = ["   ", "exit"]  # whitespace-only -> ignored
+        agent.run_agent()
+        mock_handle.assert_not_called()
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+def test_engine_command(mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings):
+    """'engine' command prints current engine info and continues."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3", "openai_model": "gpt-4o"}
+    mock_create_conv.return_value = "cid"
+    mock_load_conv.return_value = {"history": [], "preferences": {}}
+    mock_load_tools.return_value = []
+
+    with patch("engine.agent.input") as mock_input, patch("engine.agent.handle_input") as mock_handle:
+        mock_input.side_effect = ["engine", "exit"]
+        agent.run_agent()
+        mock_handle.assert_not_called()  # engine command does not call LLM
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+@patch("engine.agent.container.get_typed")
+def test_mode_command_no_vector_reload_when_same(
+    mock_get_typed, mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings
+):
+    """!mode X when X equals current vector mode should NOT call get_vectorstore."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3"}
+    mock_create_conv.return_value = "cid"
+    profile = {"history": [], "preferences": {}}
+    mock_load_conv.return_value = profile
+    mock_load_tools.return_value = []
+
+    mgr = MagicMock()
+    mgr.current_vector_mode = "creative"
+    mock_get_typed.return_value = mgr
+
+    with patch("engine.agent.input") as mock_input:
+        mock_input.side_effect = ["!mode creative", "exit"]
+        agent.run_agent()
+        # Profile is updated, but since mode==current_vector_mode, do NOT get_vectorstore
+        assert profile["mode"] == "creative"
+        mgr.get_vectorstore.assert_not_called()
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+@patch("engine.agent.subprocess.run")
+def test_reindex_without_project_does_not_run_subprocess(
+    mock_subproc, mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings
+):
+    """!reindex without project_path should warn and not call subprocess."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3"}
+    mock_create_conv.return_value = "cid"
+    mock_load_conv.return_value = {"history": [], "preferences": {}}  # no project_path
+    mock_load_tools.return_value = []
+
+    with patch("engine.agent.input") as mock_input:
+        mock_input.side_effect = ["!reindex", "exit"]
+        agent.run_agent()
+        mock_subproc.assert_not_called()
+
+
+@patch("engine.agent.load_settings")
+@patch("engine.agent.create_new_conversation")
+@patch("engine.agent.load_conversation")
+@patch("engine.agent.load_tools")
+def test_keyboard_interrupt_exits_gracefully(mock_load_tools, mock_load_conv, mock_create_conv, mock_load_settings):
+    """Simulate Ctrl+C during input loop and ensure it exits without raising."""
+    from engine import agent
+
+    mock_load_settings.return_value = {"llm_backend": "ollama", "llm_model": "llama3"}
+    mock_create_conv.return_value = "cid"
+    mock_load_conv.return_value = {"history": [], "preferences": {}}
+    mock_load_tools.return_value = []
+
+    with patch("engine.agent.input", side_effect=KeyboardInterrupt):
+        # Should not raise
+        agent.run_agent()
