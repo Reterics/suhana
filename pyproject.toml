@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 keywords = [ "ai", "chat", "agent", "llm", "ollama", "openai",]
 classifiers = [ "Development Status :: 4 - Beta", "Intended Audience :: Developers", "License :: OSI Approved :: MIT License", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3.12",]
-dependencies = [ "langchain~=0.3.25", "langchain_core~=0.3.58", "langchain_community~=0.3.24", "langchain-huggingface~=0.2.0", "sentence-transformers", "faiss-cpu", "PyYAML", "requests~=2.32.3", "hf_xet", "openai>=1.0.0", "dotenv~=0.9.9", "tiktoken~=0.9.0", "fastapi~=0.115.12", "uvicorn~=0.34.2", "pydantic~=2.11.4", "python-dotenv~=1.1.0", "openai-whisper", "coqui-tts", "sounddevice~=0.5.1", "scipy", "numpy~=1.26.4", "soundfile~=0.13.1", "python-multipart", "bs4~=0.0.2", "beautifulsoup4~=4.13.4",]
+dependencies = [ "langchain~=0.3.25", "langchain_core~=0.3.58", "langchain_community~=0.3.24", "langchain-huggingface~=0.2.0", "sentence-transformers", "faiss-cpu", "PyYAML", "requests~=2.32.3", "hf_xet", "openai>=1.0.0", "dotenv~=0.9.9", "tiktoken~=0.9.0", "fastapi~=0.115.12", "uvicorn~=0.34.2", "pydantic~=2.11.4", "python-dotenv~=1.1.0", "openai-whisper", "coqui-tts", "sounddevice~=0.5.1", "scipy", "numpy~=1.26.4", "soundfile~=0.13.1", "python-multipart", "bs4~=0.0.2", "beautifulsoup4~=4.13.4", "cryptography~=45.0.3", ]
 [[project.authors]]
 name = "Attila Reterics"
 email = "attila@reterics.com"
