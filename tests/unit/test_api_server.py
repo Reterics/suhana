@@ -11,6 +11,21 @@ anthropic_mod = types.ModuleType('anthropic')
 class Anthropic: ...
 anthropic_mod.Anthropic = Anthropic
 sys.modules['anthropic'] = anthropic_mod
+# Mock openai package used by engine.backends.openai
+openai_mod = types.ModuleType('openai')
+# Set a dummy module spec so importlib checks in dependencies don't fail
+openai_mod.__spec__ = types.SimpleNamespace()
+class _DummyChatCompletions:
+    def create(self, *args, **kwargs):
+        # minimal stub to avoid real network calls in imports
+        class _Resp:
+            choices = [type('C', (), {'message': type('M', (), {'content': ''}), 'delta': type('D', (), {'content': ''})})()]
+        return _Resp()
+class _DummyClient:
+    def __init__(self, *args, **kwargs):
+        self.chat = type('Chat', (), {'completions': _DummyChatCompletions()})()
+openai_mod.OpenAI = _DummyClient
+sys.modules['openai'] = openai_mod
 
 from api_server import app, verify_api_key
 from unittest.mock import MagicMock, patch
