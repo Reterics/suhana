@@ -495,7 +495,13 @@ class PostgresAdapter(DatabaseAdapter):
             row = cursor.fetchone()
 
             if row:
-                return row["settings"]
+                settings_val = row.get("settings") if isinstance(row, dict) else row[0]
+                if isinstance(settings_val, str):
+                    try:
+                        return json.loads(settings_val)
+                    except Exception:
+                        pass
+                return settings_val if isinstance(settings_val, dict) else {}
             return {}
         except psycopg2.Error as e:
             self.logger.error(f"Error getting settings: {e}")
@@ -705,7 +711,13 @@ class PostgresAdapter(DatabaseAdapter):
                     if r.get("created_at"):
                         msg["created_at"] = r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else r["created_at"]
                     if r.get("meta") is not None:
-                        msg["meta"] = r["meta"]
+                        meta_val = r.get("meta")
+                        if isinstance(meta_val, str):
+                            try:
+                                meta_val = json.loads(meta_val)
+                            except Exception:
+                                pass
+                        msg["meta"] = meta_val
                     history.append(msg)
             else:
                 # Fallback to legacy blob
@@ -717,6 +729,16 @@ class PostgresAdapter(DatabaseAdapter):
                     except Exception:
                         history = []
 
+            # Parse tags similar to SQLite behavior
+            tags_val = meta_row.get("tags")
+            if isinstance(tags_val, str):
+                try:
+                    tags_val = json.loads(tags_val)
+                except Exception:
+                    tags_val = []
+            elif tags_val is None:
+                tags_val = []
+
             result: Dict[str, Any] = {
                 "history": history,
                 "title": meta_row.get("title"),
@@ -725,7 +747,7 @@ class PostgresAdapter(DatabaseAdapter):
                 "archived": bool(meta_row.get("archived")),
                 "updated_at": meta_row.get("updated_at").isoformat() if hasattr(meta_row.get("updated_at"), "isoformat") else meta_row.get("updated_at"),
                 "created_at": meta_row.get("created_at").isoformat() if hasattr(meta_row.get("created_at"), "isoformat") else meta_row.get("created_at"),
-                "tags": meta_row.get("tags") or []
+                "tags": tags_val,
             }
             return result
         except psycopg2.Error as e:

@@ -3,6 +3,7 @@ import types
 import json
 import builtins
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -12,10 +13,12 @@ class PGError(Exception):
     pass
 
 class FakeCursor:
-    def __init__(self, fetchone_returns=None, fetchall_returns=None):
+    def __init__(self, fetchone_returns=None, fetchall_returns=None, rowcount=1):
         self.fetchone_returns = list(fetchone_returns or [])
         self.fetchall_returns = list(fetchall_returns or [])
         self.executed = []  # record (query, params)
+        # emulate DB-API rowcount used by adapter for update/delete success
+        self.rowcount = rowcount
 
     def execute(self, query, params=None):
         # Record queries for assertions
@@ -190,6 +193,32 @@ def install_pymongo_stub():
     fake = FakePymongo()
     sys.modules["pymongo"] = fake
     return fake
+
+# --- Lightweight FAISS/Embeddings stubs for memory tests ---
+class DummyEmbeddings:
+    def __init__(self):
+        pass
+
+class DummyVectorStore:
+    def __init__(self, docs=None):
+        self.docs = docs or []
+    def save_local(self, path):
+        # no-op file save
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        # touch a file to simulate persistence
+        Path(path).write_text("stub")
+    def similarity_search_with_score(self, query, k=1):
+        # return a single result with score 0.1
+        from langchain_core.documents import Document as _Doc
+        return [(_Doc(page_content="stub", metadata={}), 0.1)]
+
+class DummyFAISS:
+    @staticmethod
+    def from_documents(documents, embeddings):
+        return DummyVectorStore(documents)
+    @staticmethod
+    def load_local(path, embeddings):
+        return DummyVectorStore()
 
 # --- Tests for PostgresAdapter using stubbed psycopg2 ---
 
@@ -546,3 +575,65 @@ def test_postgres_disconnect(monkeypatch):
     assert adapter.connection is not None
     ok = adapter.disconnect()
     assert ok is True
+
+
+def test_postgres_get_settings_parses_json_string(monkeypatch):
+    # Case 1: RealDictCursor style dict with string JSON
+    c1 = FakeCursor(fetchone_returns=[{"settings": "{\"x\": 1}"}])
+    install_psycopg2_stub([c1])
+    import importlib
+    import engine.database.postgres as pg
+    importlib.reload(pg)
+    from engine.database.postgres import PostgresAdapter
+    adapter = PostgresAdapter(connection_string="postgres://stub")
+    got = adapter.get_settings()
+    assert got == {"x": 1}
+
+    # Case 2: Non-dict row (tuple) with string JSON
+    c2 = FakeCursor(fetchone_returns=[("{\"y\": 2}",)])
+    install_psycopg2_stub([c2])
+    importlib.reload(pg)
+    from engine.database.postgres import PostgresAdapter as PA2
+
+    adapter2 = PA2(connection_string="postgres://stub")
+    got2 = adapter2.get_settings(user_id="u1")
+    assert got2 == {"y": 2}
+
+
+def test_postgres_load_conversation_parses_string_tags_and_meta(monkeypatch):
+    # Meta row with tags as JSON string
+    meta = {
+        "title": "Topic",
+        "tags": "[\"t1\", \"t2\"]",
+        "starred": False,
+        "archived": True,
+        "updated_at": datetime.now(),
+        "created_at": datetime.now(),
+        "category": None,  # should default to "General"
+        "data": None,
+    }
+    c_meta = FakeCursor(fetchone_returns=[meta])
+    # Message rows with meta as JSON string
+    msgs = [
+        {"idx": 0, "role": "user", "content": "Hi", "created_at": datetime.now(), "meta": "{\"k\": 1}"},
+        {"idx": 1, "role": "assistant", "content": "Hello", "created_at": datetime.now(), "meta": None},
+    ]
+    c_msgs = FakeCursor(fetchall_returns=[msgs])
+
+    install_psycopg2_stub([c_meta, c_msgs])
+
+    import importlib
+    import engine.database.postgres as pg
+    importlib.reload(pg)
+    from engine.database.postgres import PostgresAdapter
+
+    adapter = PostgresAdapter(connection_string="postgres://stub")
+    adapter.connect()
+    res = adapter.load_conversation("u1", "c1")
+    assert res is not None
+    # Tags parsed from string JSON
+    assert res["tags"] == ["t1", "t2"]
+    # Category defaults to General when None in meta
+    assert res["category"] == "General"
+    # Meta of first message parsed into dict
+    assert isinstance(res["history"][0].get("meta"), dict) and res["history"][0]["meta"]["k"] == 1
