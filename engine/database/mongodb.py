@@ -120,6 +120,9 @@ class MongoDBAdapter(DatabaseAdapter):
             if "memory_facts" not in self.db.list_collection_names():
                 self.db.create_collection("memory_facts")
 
+            if "api_keys" not in self.db.list_collection_names():
+                self.db.create_collection("api_keys")
+
             # Create indexes
             self.db.users.create_index("id", unique=True)
             self.db.users.create_index("username", unique=True)
@@ -139,6 +142,11 @@ class MongoDBAdapter(DatabaseAdapter):
 
             self.db.memory_facts.create_index("user_id")
             self.db.memory_facts.create_index("private")
+
+            # API keys indexes
+            self.db.api_keys.create_index("key", unique=True)
+            self.db.api_keys.create_index("user_id")
+            self.db.api_keys.create_index("active")
 
             return True
         except Exception as e:
@@ -240,8 +248,12 @@ class MongoDBAdapter(DatabaseAdapter):
             user = self.db.users.find_one({"id": user_id})
 
             if user:
-                # Convert ObjectId to string for JSON serialization
-                user["_id"] = str(user["_id"])
+                # Convert ObjectId to string for JSON serialization if present
+                try:
+                    if user.get("_id") is not None:
+                        user["_id"] = str(user["_id"])  # type: ignore[index]
+                except Exception:
+                    pass
                 return user
             return None
         except Exception as e:
@@ -261,9 +273,13 @@ class MongoDBAdapter(DatabaseAdapter):
 
             users = list(self.db.users.find())
 
-            # Convert ObjectId to string for JSON serialization
+            # Convert ObjectId to string for JSON serialization if present
             for user in users:
-                user["_id"] = str(user["_id"])
+                try:
+                    if user.get("_id") is not None:
+                        user["_id"] = str(user["_id"])  # type: ignore[index]
+                except Exception:
+                    pass
 
             return users
         except Exception as e:
@@ -1229,3 +1245,136 @@ class MongoDBAdapter(DatabaseAdapter):
         except Exception as e:
             self.logger.error(f"Error clearing memory: {e}")
             return 0
+
+    # API Key Management Methods
+
+    def get_api_key(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get API key information.
+
+        Args:
+            key: API key
+
+        Returns:
+            Dict containing API key information or None if not found
+        """
+        try:
+            if not self.db:
+                self.connect()
+
+            doc = self.db.api_keys.find_one({"key": key})
+            if not doc:
+                return None
+            # Ensure types align with SQLite
+            if doc.get("permissions") is None:
+                doc["permissions"] = []
+            doc["active"] = bool(doc.get("active", True))
+            return doc
+        except Exception as e:
+            self.logger.error(f"Error getting API key: {e}")
+            return None
+
+    def get_user_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all API keys for a user.
+        """
+        try:
+            if not self.db:
+                self.connect()
+            keys = list(self.db.api_keys.find({"user_id": user_id}))
+            for k in keys:
+                if k.get("permissions") is None:
+                    k["permissions"] = []
+                k["active"] = bool(k.get("active", True))
+            return keys
+        except Exception as e:
+            self.logger.error(f"Error getting user API keys: {e}")
+            return []
+
+    def create_api_key(self, user_id: str, key: str, name: Optional[str] = None,
+                       rate_limit: int = 60, permissions: Optional[List[str]] = None) -> bool:
+        """
+        Create a new API key.
+        """
+        try:
+            if not self.db:
+                self.connect()
+            if permissions is None:
+                permissions = ["user"]
+            now = datetime.now().isoformat()
+            doc = {
+                "key": key,
+                "user_id": user_id,
+                "name": name,
+                "created_at": now,
+                "last_used": None,
+                "usage_count": 0,
+                "rate_limit": rate_limit,
+                "permissions": permissions,
+                "active": True,
+            }
+            res = self.db.api_keys.insert_one(doc)
+            return res.inserted_id is not None
+        except Exception as e:
+            self.logger.error(f"Error creating API key: {e}")
+            return False
+
+    def update_api_key_usage(self, key: str) -> bool:
+        """
+        Update API key usage statistics.
+        """
+        try:
+            if not self.db:
+                self.connect()
+            now = datetime.now().isoformat()
+            res = self.db.api_keys.update_one(
+                {"key": key},
+                {"$set": {"last_used": now}, "$inc": {"usage_count": 1}}
+            )
+            return res.matched_count > 0
+        except Exception as e:
+            self.logger.error(f"Error updating API key usage: {e}")
+            return False
+
+    def revoke_api_key(self, key: str) -> bool:
+        """
+        Revoke an API key.
+        """
+        try:
+            if not self.db:
+                self.connect()
+            res = self.db.api_keys.update_one({"key": key}, {"$set": {"active": False}})
+            return res.matched_count > 0
+        except Exception as e:
+            self.logger.error(f"Error revoking API key: {e}")
+            return False
+
+    def get_api_key_usage_stats(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get API key usage statistics.
+        """
+        try:
+            if not self.db:
+                self.connect()
+            query = {"user_id": user_id} if user_id else {}
+            keys = list(self.db.api_keys.find(query))
+            # Enrich with username similar to SQLite which joins users
+            user_cache = {}
+            for k in keys:
+                uid = k.get("user_id")
+                username = None
+                if uid:
+                    if uid in user_cache:
+                        username = user_cache[uid]
+                    else:
+                        u = self.db.users.find_one({"id": uid})
+                        username = u.get("username") if u else None
+                        user_cache[uid] = username
+                k["username"] = username
+                if k.get("permissions") is None:
+                    k["permissions"] = []
+                k["active"] = bool(k.get("active", True))
+            return keys
+        except Exception as e:
+            self.logger.error(f"Error getting API key usage stats: {e}")
+            return []
