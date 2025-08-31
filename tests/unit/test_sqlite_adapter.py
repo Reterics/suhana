@@ -224,3 +224,98 @@ def test_memory_add_search_forget_clear(sqlite_adapter: SQLiteAdapter, tmp_path)
     cleared = sqlite_adapter.clear_memory(user_id=None, clear_shared=True)
     assert cleared >= 2
     assert len(list(shared_dir.glob("*.faiss"))) == 0
+
+def test_categories_and_delete_conversation(sqlite_adapter: SQLiteAdapter):
+    user_id = _create_user(sqlite_adapter)
+
+    # Initially, no categories
+    assert sqlite_adapter.list_categories(user_id) == []
+
+    # Create a category explicitly
+    assert sqlite_adapter.create_category(user_id, "Ideas")
+    assert sqlite_adapter.list_categories(user_id) == ["Ideas"]
+
+    # Creating the same category again is a no-op success
+    assert sqlite_adapter.create_category(user_id, "Ideas")
+    assert sqlite_adapter.list_categories(user_id) == ["Ideas"]
+
+    # Create conversation and then delete it
+    conv_id = sqlite_adapter.create_new_conversation(user_id, title="Tmp", category="Ideas")
+    ids = sqlite_adapter.list_conversations(user_id, category="Ideas")
+    assert conv_id in ids
+    assert sqlite_adapter.delete_conversation(user_id, conv_id)
+    ids_after = sqlite_adapter.list_conversations(user_id)
+    assert conv_id not in ids_after
+
+
+def test_api_key_lifecycle(sqlite_adapter: SQLiteAdapter):
+    user_id = _create_user(sqlite_adapter)
+
+    key = "k-" + uuid.uuid4().hex
+    # Create with custom name, rate limit and permissions
+    ok = sqlite_adapter.create_api_key(user_id, key, name="CI", rate_limit=120, permissions=["read", "write"])
+    assert ok
+
+    # Read back the key
+    info = sqlite_adapter.get_api_key(key)
+    assert info is not None
+    assert info["user_id"] == user_id
+    assert info["name"] == "CI"
+    assert info["rate_limit"] == 120
+    assert info["permissions"] == ["read", "write"]
+    assert info["active"] is True
+
+    # List keys for user
+    keys = sqlite_adapter.get_user_api_keys(user_id)
+    assert any(k["key"] == key for k in keys)
+
+    # Update usage and then revoke
+    assert sqlite_adapter.update_api_key_usage(key)
+    # After usage, usage_count should be >= 1 and last_used set
+    info2 = sqlite_adapter.get_api_key(key)
+    assert isinstance(info2["usage_count"], int) and info2["usage_count"] >= 1
+    assert isinstance(info2["last_used"], str) and len(info2["last_used"]) >= 10
+
+    assert sqlite_adapter.revoke_api_key(key)
+    info3 = sqlite_adapter.get_api_key(key)
+    assert info3["active"] is False
+
+    # Usage stats for all users and for a specific user
+    stats_all = sqlite_adapter.get_api_key_usage_stats()
+    assert any(s["key"] == key for s in stats_all)
+    stats_user = sqlite_adapter.get_api_key_usage_stats(user_id)
+    assert any(s["key"] == key for s in stats_user)
+
+
+def test_migrate_from_files(sqlite_adapter: SQLiteAdapter, tmp_path: Path):
+    base = tmp_path / "fs"
+    users_dir = base / "users"
+    u1 = users_dir / "u1"
+    (u1 / "conversations").mkdir(parents=True)
+
+    # Global settings
+    (base / "settings.json").write_text(json.dumps({"g": 1}), encoding="utf-8")
+
+    # User profile and settings
+    (u1 / "profile.json").write_text(json.dumps({"name": "Alice"}), encoding="utf-8")
+    (u1 / "settings.json").write_text(json.dumps({"s": 2}), encoding="utf-8")
+
+    # One conversation
+    conv_id = "c-001"
+    conversation = {"title": "Hello", "history": [{"role": "user", "content": "hi"}]}
+    (u1 / "conversations" / f"{conv_id}.json").write_text(json.dumps(conversation), encoding="utf-8")
+
+    users_m, convs_m, settings_m = sqlite_adapter.migrate_from_files(base)
+
+    # Validate counts
+    assert users_m >= 1
+    assert convs_m >= 1
+    assert settings_m >= 2  # global + user settings
+
+    # Validate data presence
+    user = sqlite_adapter.get_user("u1")
+    assert user is not None and user["username"] == "Alice"
+    loaded = sqlite_adapter.load_conversation("u1", conv_id)
+    assert loaded is not None and loaded["title"] == "Hello"
+    assert sqlite_adapter.get_settings() == {"g": 1}
+    assert sqlite_adapter.get_settings("u1") == {"s": 2}
