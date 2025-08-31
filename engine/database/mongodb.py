@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
 import pymongo
-from bson.objectid import ObjectId
 
 from langchain_community.vectorstores import FAISS
 try:

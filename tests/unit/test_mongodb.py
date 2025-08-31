@@ -6,8 +6,6 @@ from pathlib import Path
 
 import pytest
 
-# ---- Lightweight stubs for pymongo and vector store/embeddings ----
-
 ASCENDING = 1
 
 class FakeCollection:
@@ -232,6 +230,34 @@ def test_list_conversations_and_meta(adapter):
     assert set(ids) >= {"c2", "c3"}
     meta = adapter.list_conversation_meta("u1")
     assert isinstance(meta, list)
+    # With non-existent category, list_conversations returns empty list
+    none_ids = adapter.list_conversations("u1", category="DoesNotExist")
+    assert none_ids == []
+
+
+def test_migrate_from_files(adapter, tmp_path: Path):
+    base = tmp_path / "fs"
+    users_dir = base / "users" / "u1"
+    (users_dir / "conversations").mkdir(parents=True)
+    # Global settings
+    (base / "settings.json").write_text(json.dumps({"g": 1}), encoding="utf-8")
+    # User profile and settings
+    (users_dir / "profile.json").write_text(json.dumps({"name": "Alice"}), encoding="utf-8")
+    (users_dir / "settings.json").write_text(json.dumps({"s": 2}), encoding="utf-8")
+    # One conversation
+    conv_id = "c-001"
+    conversation = {"title": "Hello", "history": [{"role": "user", "content": "hi"}]}
+    (users_dir / "conversations" / f"{conv_id}.json").write_text(json.dumps(conversation), encoding="utf-8")
+
+    users_m, convs_m, settings_m = adapter.migrate_from_files(base)
+    assert users_m >= 1 and convs_m >= 1 and settings_m >= 2
+    # Validate data presence
+    user = adapter.get_user("u1")
+    assert user is not None and user["username"] == "Alice"
+    loaded = adapter.load_conversation("u1", conv_id)
+    assert loaded is not None and loaded["title"] == "Hello"
+    assert adapter.get_settings() == {"g": 1}
+    assert adapter.get_settings("u1") == {"s": 2}
 
 
 def test_save_and_load_conversation_including_legacy(adapter):
@@ -275,7 +301,22 @@ def test_create_new_and_delete_conversation(adapter):
     assert adapter.delete_conversation("u2", cid) is True
 
 
+def test_save_conversation_invalid_messages_returns_false(adapter):
+    # history/messages is not a list -> ValueError inside adapter, should return False
+    adapter.create_category("u3", "General")
+    bad = {"title": "T", "category": "General", "history": {"x": 1}, "messages": "still-bad"}
+    ok = adapter.save_conversation("u3", "bad1", bad)
+    assert ok is False
+
+
+def test_update_user_noop_returns_true(adapter):
+    # If no updatable fields are provided, method returns True (no-op)
+    assert adapter.update_user("does-not-matter", {}) is True
+
+
 def test_memory_add_search_forget_clear(adapter, tmp_path):
+    # Initially, searching with no facts returns empty list
+    assert adapter.search_memory("anything", user_id="u1") == []
     # Add shared (non-private) memory for global search
     ok = adapter.add_memory_fact(None, "The sky is blue", private=False)
     assert ok is True
@@ -314,6 +355,196 @@ def test_api_keys_full_flow(adapter):
     assert adapter.revoke_api_key("K1") is True
     kdoc3 = adapter.get_api_key("K1")
     assert kdoc3["active"] is False
-    # stats
+    # stats (all)
     stats = adapter.get_api_key_usage_stats()
-    assert isinstance(stats, list) and stats[0].get("username") == "alice"
+    assert isinstance(stats, list) and any(s.get("username") == "alice" for s in stats)
+    # stats (filtered by user)
+    adapter.create_user({"id": "u2", "username": "bob"})
+    adapter.create_api_key("u2", key="K2", name="ci", rate_limit=60, permissions=["user"])
+    stats_u1 = adapter.get_api_key_usage_stats("u1")
+    assert all(s.get("user_id") == "u1" for s in stats_u1) and all(s.get("username") == "alice" for s in stats_u1)
+
+
+def test_delete_conversation_returns_false_when_missing(adapter):
+    # Attempt to delete non-existent conversation
+    assert adapter.delete_conversation("u9", "nope") is False
+
+
+def test_title_derivation_truncation(adapter):
+    adapter.create_category("u4", "General")
+    long_text = "A" * 80
+    data = {"title": "New Conversation", "category": "General", "messages": [{"role": "user", "content": long_text}]}
+    adapter.save_conversation("u4", "c-long", data)
+    res = adapter.load_conversation("u4", "c-long")
+    assert res is not None
+    # Should have ellipsis
+    assert res["title"].endswith("...")
+    assert len(res["title"]) <= 63
+
+
+def test_api_key_normalization_defaults(adapter):
+    # Insert an API key doc with permissions=None and no active field
+    adapter.create_user({"id": "ua", "username": "norm"})
+    adapter.db.api_keys.insert_one({
+        "key": "KZ",
+        "user_id": "ua",
+        "name": None,
+        "created_at": datetime.now().isoformat(),
+        "last_used": None,
+        "usage_count": 0,
+        "rate_limit": 60,
+        "permissions": None,
+        # 'active' omitted intentionally
+    })
+    got = adapter.get_api_key("KZ")
+    assert got is not None
+    assert got["permissions"] == []
+    assert got["active"] is True
+    # And listing for user normalizes too
+    lst = adapter.get_user_api_keys("ua")
+    assert lst and lst[0]["permissions"] == [] and lst[0]["active"] is True
+
+
+def test_load_conversation_legacy_messages_key(adapter):
+    adapter.create_category("u5", "General")
+    cat_id = adapter.db.categories.find_one({"user_id": "u5", "name": "General"})["id"]
+    adapter.db.conversations.insert_one({
+        "id": "legacy2",
+        "user_id": "u5",
+        "category_id": cat_id,
+        "title": "Legacy2",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "starred": False,
+        "archived": False,
+        "tags": [],
+        "data": {"messages": [{"role": "user", "content": "legacy-messages"}]}
+    })
+    res = adapter.load_conversation("u5", "legacy2")
+    assert res is not None and res["history"] and res["history"][0]["content"] == "legacy-messages"
+
+
+def test_create_category_idempotent(adapter):
+    assert adapter.create_category("u6", "General") is True
+    # Creating again should be True and not duplicate
+    assert adapter.create_category("u6", "General") is True
+    cats = adapter.list_categories("u6")
+    assert cats == ["General"]
+
+
+def test_memory_search_shared_only_and_clear_none(adapter):
+    # No facts yet
+    assert adapter.clear_memory(user_id="ux") == 0
+    # Add shared fact
+    ok = adapter.add_memory_fact(None, "shared fact", private=False)
+    assert ok is True
+    results = adapter.search_memory("shared", user_id=None, include_shared=True, k=2)
+    assert isinstance(results, list)
+
+
+def test_connect_error_handling(monkeypatch):
+    # Force MongoClient to raise to hit connect error path
+    import importlib
+    import engine.database.mongodb as m
+    importlib.reload(m)
+    class Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("boom")
+    monkeypatch.setattr(m.pymongo, "MongoClient", Boom)
+    from engine.database.mongodb import MongoDBAdapter
+    a = MongoDBAdapter(connection_string="mongodb://stub", database_name="db")
+    ok = a.connect()
+    assert ok is False
+
+def test_save_conversation_creates_missing_category_and_skips_bad_messages(adapter):
+    # Category does not exist; adapter should create it
+    data = {
+        "title": "",
+        "category": "BrandNew",
+        "history": [
+            "not-a-dict",  # skipped
+            {"role": "user"},  # missing content -> skipped
+            {"content": "no role"},  # missing role -> skipped
+            {"role": "user", "content": "first valid"},  # included
+            {"role": "assistant", "content": "ok"},
+        ],
+    }
+    ok = adapter.save_conversation("u7", "c-skip", data)
+    assert ok is True
+    # Category should now exist
+    assert "BrandNew" in adapter.list_categories("u7")
+    # Only two valid messages saved
+    msgs = [m for m in adapter.db.conversation_messages.docs if m.get("conversation_id") == "c-skip"]
+    assert len(msgs) == 2 and msgs[0]["idx"] == 0 and msgs[0]["role"] == "user"
+
+
+def test_load_conversation_defaults_category_when_missing(adapter):
+    # Insert conversation with category_id that doesn't exist
+    adapter.db.conversations.insert_one({
+        "id": "c-missing-cat",
+        "user_id": "u8",
+        "category_id": "does-not-exist",
+        "title": "T",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "starred": False,
+        "archived": False,
+        "tags": [],
+        "data": {"history": [{"role": "user", "content": "hi"}]}
+    })
+    res = adapter.load_conversation("u8", "c-missing-cat")
+    assert res is not None and res["category"] == "General"
+
+
+def test_load_conversation_malformed_blob_results_empty_history(adapter):
+    # Malformed JSON blob and no normalized messages
+    adapter.create_category("u9", "General")
+    cat = adapter.db.categories.find_one({"user_id": "u9", "name": "General"})["id"]
+    adapter.db.conversations.insert_one({
+        "id": "c-bad-blob",
+        "user_id": "u9",
+        "category_id": cat,
+        "title": "T",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "starred": False,
+        "archived": False,
+        "tags": [],
+        "data": "{bad json]"
+    })
+    res = adapter.load_conversation("u9", "c-bad-blob")
+    assert res is not None and res["history"] == []
+
+
+def test_memory_forget_with_shared_toggle(adapter):
+    # Add private and shared facts, then forget with forget_shared=True
+    adapter.add_memory_fact("ua1", "private apples", private=True)
+    adapter.add_memory_fact(None, "shared apples", private=False)
+    # Forget only user's facts (no shared)
+    n1 = adapter.forget_memory("apples", user_id="ua1", forget_shared=False)
+    assert isinstance(n1, int)
+    # Forget shared too (for remaining, if any)
+    n2 = adapter.forget_memory("apples", user_id="ua1", forget_shared=True)
+    assert isinstance(n2, int)
+
+
+def test_clear_memory_user_and_shared(adapter):
+    # Seed both user and shared
+    adapter.add_memory_fact("uc1", "keep1", private=True)
+    adapter.add_memory_fact(None, "keep2", private=False)
+    # Clear combined set
+    n = adapter.clear_memory(user_id="uc1", clear_shared=True)
+    assert isinstance(n, int)
+
+
+def test_update_api_key_usage_failure_returns_false(adapter):
+    assert adapter.update_api_key_usage("no-such-key") is False
+
+
+def test_create_new_conversation_with_title_and_new_category(adapter):
+    # Provide explicit title and category which doesn't exist yet
+    conv_id = adapter.create_new_conversation("unew", title="Hello", category="Ideas")
+    assert conv_id
+    # Ensure category created and set on saved conversation
+    cats = adapter.list_categories("unew")
+    assert "Ideas" in cats
