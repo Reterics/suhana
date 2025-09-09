@@ -578,6 +578,14 @@ def get_user_settings(user_id: str, _: str = Depends(verify_api_key)):
             "gpt-4",
             "gpt-4-turbo",
             "gpt-4o"
+        ],
+        "gemini": [
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
+        ],
+        "claude": [
+            "claude-3-opus-20240229",
+            "claude-3-5-sonnet-20240620"
         ]
     }
     return {"settings": current_settings, "llm_options": llm_options}

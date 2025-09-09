@@ -263,10 +263,12 @@ export function Settings({ onClose }: SettingsProps) {
                   >
                     <option value="ollama">Ollama</option>
                     <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="claude">Claude</option>
                   </select>
                 </div>
 
-                {settingsForm.settings.llm_backend === 'ollama' ? (
+                {settingsForm.settings.llm_backend === 'ollama' && (
                   <div>
                     <label
                       htmlFor="ollama-model"
@@ -289,7 +291,9 @@ export function Settings({ onClose }: SettingsProps) {
                       ))}
                     </select>
                   </div>
-                ) : (
+                )}
+
+                {settingsForm.settings.llm_backend === 'openai' && (
                   <>
                     <div>
                       <label
@@ -330,6 +334,98 @@ export function Settings({ onClose }: SettingsProps) {
                         }
                         className="w-full border border-gray-300 rounded-md px-3 py-2"
                         placeholder="sk-..."
+                      />
+                    </div>
+                  </>
+                )}
+
+                {settingsForm.settings.llm_backend === 'gemini' && (
+                  <>
+                    <div>
+                      <label
+                        htmlFor="gemini-model"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Gemini Model
+                      </label>
+                      <select
+                        id="gemini-model"
+                        value={settingsForm.settings.gemini_model || ''}
+                        onChange={e =>
+                          handleChange('gemini_model', e.currentTarget.value)
+                        }
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      >
+                        {(settings.llm_options.gemini || []).map(model => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="gemini-api-key"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Gemini API Key
+                      </label>
+                      <input
+                        id="gemini-api-key"
+                        type="password"
+                        value={settingsForm.settings.gemini_api_key || ''}
+                        onChange={e =>
+                          handleChange('gemini_api_key', e.currentTarget.value)
+                        }
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        placeholder="AIza..."
+                      />
+                    </div>
+                  </>
+                )}
+
+                {settingsForm.settings.llm_backend === 'claude' && (
+                  <>
+                    <div>
+                      <label
+                        htmlFor="claude-model"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Claude Model
+                      </label>
+                      <select
+                        id="claude-model"
+                        value={settingsForm.settings.claude_model || ''}
+                        onChange={e =>
+                          handleChange('claude_model', e.currentTarget.value)
+                        }
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      >
+                        {(settings.llm_options.claude || []).map(model => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="claude-api-key"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Claude API Key
+                      </label>
+                      <input
+                        id="claude-api-key"
+                        type="password"
+                        value={settingsForm.settings.claude_api_key || ''}
+                        onChange={e =>
+                          handleChange('claude_api_key', e.currentTarget.value)
+                        }
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        placeholder="sk-ant-..."
                       />
                     </div>
                   </>

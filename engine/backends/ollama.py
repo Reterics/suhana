@@ -174,6 +174,8 @@ def query_ollama(prompt, system_prompt, profile, settings, force_stream):
         resp = requests.post("http://localhost:11434/api/generate", json={"model": model, "prompt": text, "stream": False})
         if resp.status_code == 404:
             models_list = get_downloaded_models()
+            if not models_list:
+                return "[404] No models are available. Please download a model using Ollama CLI (e.g., 'ollama pull mistral') or configure a different AI API."
             models_str = "\n".join(f"- {m}" for m in models_list)
             return f"[404] Model '{model}' not available. Choose one of the downloaded models:\n{models_str}"
 

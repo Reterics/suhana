@@ -19,10 +19,14 @@ export type SettingsType = {
   llm_backend: string;
   llm_model: string;
   openai_model: string;
+  gemini_model?: string;
+  claude_model?: string;
   voice: boolean;
   streaming: boolean;
   secured_streaming: boolean;
-  openai_api_key: string;
+  openai_api_key?: string;
+  gemini_api_key?: string;
+  claude_api_key?: string;
 }
 
 export type AppSettings = {
@@ -71,6 +75,8 @@ export interface UserPrivacy {
 export interface LLMOptions {
   ollama: string[];
   openai: string[];
+  gemini?: string[];
+  claude?: string[];
 }
 
 export interface UserSession {
@@ -311,10 +317,11 @@ export function ChatProvider({
 
   const sendMessage = async (
     input: string,
-    backend = 'ollama',
+    backend?: string,
     mode?: string,
     project_path?: string
   ) => {
+    const effectiveBackend = backend ?? settings?.settings.llm_backend ?? 'ollama';
     const data = await fetchWithKey(`${BASE_URL}/query`, apiKey, setError, {
       method: 'POST',
       headers: {
@@ -322,7 +329,7 @@ export function ChatProvider({
       },
       body: JSON.stringify({
         input,
-        backend,
+        backend: effectiveBackend,
         conversation_id: conversationId,
         mode,
         project_path
@@ -337,10 +344,11 @@ export function ChatProvider({
   const sendStreamingMessage = async (
     input: string,
     onToken: (token: string) => void,
-    backend = 'ollama',
+    backend?: string,
     mode?: string,
     project_path?: string
   ) => {
+    const effectiveBackend = backend ?? settings?.settings.llm_backend ?? 'ollama';
     const res = await fetch(`${BASE_URL}/query/stream`, {
       method: 'POST',
       headers: {
@@ -349,7 +357,7 @@ export function ChatProvider({
       },
       body: JSON.stringify({
         input,
-        backend,
+        backend: effectiveBackend,
         conversation_id: conversationId,
         mode,
         project_path
@@ -370,13 +378,14 @@ export function ChatProvider({
   const sendSecuredStreamingMessage = (
     input: string,
     onToken: (token: string) => void,
-    backend = 'ollama',
+    backend?: string,
     mode?: string,
     project_path?: string
   )=> {
     if (messages.length === 0) {
       addTemporaryConversation(input)
     }
+    const effectiveBackend = backend ?? settings?.settings.llm_backend ?? 'ollama';
     return consumeEncryptedStream(
       `${BASE_URL}/query/secure_stream`,
       apiKey,
@@ -384,7 +393,7 @@ export function ChatProvider({
       onToken,
       JSON.stringify({
         input,
-        backend,
+        backend: effectiveBackend,
         conversation_id: conversationId,
         mode,
         project_path
