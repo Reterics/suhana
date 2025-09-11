@@ -89,6 +89,17 @@ def verify_api_key(x_api_key: str = Header(...), request: Request = None):
     return user_id
 
 
+def verify_or_guest(x_api_key: str | None = Header(default=None, alias="x-api-key"), request: Request = None):
+    """
+    Verify API key if present; otherwise, allow a public guest user id for non-secure endpoints.
+    """
+    # If no API key provided, return a shared guest identity
+    if x_api_key is None:
+        return "guest_public"
+    # Else validate normally
+    return verify_api_key(x_api_key, request)
+
+
 class QueryRequest(BaseModel):
     input: str | None = None
     backend: str = "ollama"
@@ -192,7 +203,7 @@ def _get_conversation_profile(conversation_id: str, user_id: str):
     return conversation_id, profile
 
 @app.post("/query")
-def query(req: QueryRequest, user_id: str = Depends(verify_api_key)):
+def query(req: QueryRequest, user_id: str = Depends(verify_or_guest)):
     # Get or create conversation profile
     req.conversation_id, profile = _get_conversation_profile(req.conversation_id, user_id)
 
@@ -232,7 +243,7 @@ async def transcribe(audio: UploadFile = File(...)):
     return {"text": result.get("text", "")}
 
 @app.post("/query/stream")
-def query_stream(req: QueryRequest, user_id: str = Depends(verify_api_key)):
+def query_stream(req: QueryRequest, user_id: str = Depends(verify_or_guest)):
     req.conversation_id, profile = _get_conversation_profile(req.conversation_id, user_id)
     if req.input is None:
         async def simple_generator():

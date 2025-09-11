@@ -18,6 +18,7 @@ import { ProjectMetadata } from './ProjectMetadata.tsx';
 import { Settings } from './Settings.tsx';
 import { Login } from './Login.tsx';
 import { Register } from './Register.tsx';
+import WelcomeScreen from "./WelcomePage.tsx";
 
 export function App() {
   const {
@@ -49,6 +50,7 @@ export function App() {
   const [authModalView, setAuthModalView] = useState<'login' | 'register'>(
     'login'
   );
+  const [guestMode, setGuestMode] = useState(false);
 
   if (!apiReady) {
     return (
@@ -291,44 +293,16 @@ export function App() {
           </div>
         </div>
 
-        {isAuthenticated ? (
-          <>
+        {(isAuthenticated || guestMode) ? (
+          <div className="flex-1 flex flex-col">
             <ChatMessages messages={messages} />
             <ChatToolbar onSend={handleSendMessage} />
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <img src="./suhana.png" className="h-24 mb-6" alt="Suhana logo" />
-            <h1 className="text-3xl font-bold text-gray-800 mb-3">
-              Welcome to Suhana
-            </h1>
-            <p className="text-base text-gray-600 max-w-xl mb-6">
-              Your intelligent assistant for development and conversation.
-              <br />
-              Please log in or register to get started.
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setAuthModalView('login');
-                  setAuthModalOpen(true);
-                }}
-                className="text-sm px-5 py-2.5 rounded bg-black text-white hover:bg-gray-900 shadow-sm"
-              >
-                Login
-              </button>
-              <button
-                onClick={() => {
-                  setAuthModalView('register');
-                  setAuthModalOpen(true);
-                }}
-                className="text-sm px-5 py-2.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
-              >
-                Register
-              </button>
-            </div>
           </div>
+        ) : (
+          <WelcomeScreen
+            handleSendMessage={handleSendMessage}
+            setGuestMode={setGuestMode}
+          />
         )}
       </main>
 

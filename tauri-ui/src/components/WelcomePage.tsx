@@ -1,4 +1,5 @@
 import { useRef, useState } from "preact/hooks";
+import { motion } from "motion/react";
 
 type WelcomeProps = {
   handleSendMessage: (text: string) => Promise<void> | void;
@@ -22,15 +23,18 @@ export default function WelcomeScreen({
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  /** Core start logic */
-  const startChat = async (prompt?: string) => {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [animating, setAnimating] = useState(false);
+  const [dx, setDx] = useState(0);
+  const [dy, setDy] = useState(0);
+  const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
+
+  const proceedStartChat = async (prompt?: string) => {
     if (submitting) return;
     try {
       setSubmitting(true);
       setGuestMode(true);
 
-      // If a prompt is provided, send it as the first message,
-      // otherwise just navigate to the empty chat.
       if (prompt && prompt.trim()) {
         await handleSendMessage(prompt.trim());
       }
@@ -42,24 +46,31 @@ export default function WelcomeScreen({
     }
   };
 
-  /** Whole-page CTA: click/tap anywhere to jump into chat (no prompt) */
-  const onBigCtaClick = () => {
-    void startChat();
-  };
+  const startChat = async (prompt?: string) => {
+    if (submitting || animating) return;
 
-  /** Keyboard access for the big CTA area */
-  const onBigCtaKeyDown: preact.JSX.KeyboardEventHandler<HTMLDivElement> = (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      void startChat();
+    // Measure the bottom block and compute translation to (x=0, bottom=16px)
+    const el = barRef.current;
+    if (typeof window !== "undefined" && el) {
+      const rect = el.getBoundingClientRect();
+      const targetBottomGap = 16; // px padding from bottom; set to 0 for flush
+      const translateY = Math.max(0, window.innerHeight - rect.bottom - targetBottomGap);
+      const translateX = -rect.left; // move left edge to x=0
+
+      setDx(translateX);
+      setDy(translateY);
+      setPendingPrompt(prompt);
+      setAnimating(true);
+      return; // proceed happens on animation complete
     }
+
+    await proceedStartChat(prompt);
   };
 
-  /** Submit from the form/input */
   const onSubmit: preact.JSX.GenericEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     if (isComposing) return;
-    e.stopPropagation(); // don't bubble to the big CTA
+    e.stopPropagation();
     void startChat(value);
   };
 
@@ -68,8 +79,6 @@ export default function WelcomeScreen({
       className="flex-1 flex flex-col items-center justify-center p-8 text-center select-none"
       role="button"
       tabIndex={0}
-      onClick={onBigCtaClick}
-      onKeyDown={onBigCtaKeyDown}
       aria-label="Start chat"
     >
       <img
@@ -95,7 +104,6 @@ export default function WelcomeScreen({
         // keep inner controls clickable without triggering the big CTA unless they want to
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Example prompt chips */}
         <div className="flex flex-wrap gap-2 mb-4">
           {examplePrompts.map((p) => (
             <button
@@ -106,7 +114,7 @@ export default function WelcomeScreen({
                 e.stopPropagation(); // prevent big CTA
                 void startChat(p);
               }}
-              disabled={submitting}
+              disabled={submitting || animating}
               title={p}
             >
               {p}
@@ -114,97 +122,114 @@ export default function WelcomeScreen({
           ))}
         </div>
 
-        {/* Form: input (Enter submits) */}
-        <form onSubmit={onSubmit} className="relative">
-          <label htmlFor="guest-input" className="sr-only">
-            Ask anything to start a guest chat
-          </label>
-          <input
-            id="guest-input"
-            ref={inputRef}
-            type="text"
-            placeholder="Ask anything to start a guest chat…"
-            value={value}
-            onChange={(e) => setValue((e.currentTarget as HTMLInputElement).value)}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-            inputMode="text"
-            enterKeyHint="send"
-            aria-describedby="welcome-help"
-            className="w-full px-4 py-3 rounded-lg border border-zinc-300 bg-neutral-50 text-black
+        <motion.div
+          ref={barRef}
+          initial={{ x: 0, y: 0, width: "100%", borderRadius: 12 }}
+          animate={
+            animating
+              ? { x: dx, y: dy, width: "100vw", borderRadius: 0 }
+              : { x: 0, y: 0, width: "100%", borderRadius: 12 }
+          }
+          transition={{ duration: 1, ease: "easeInOut" }}
+          onAnimationComplete={async () => {
+            if (animating) {
+              setAnimating(false);
+              await proceedStartChat(pendingPrompt);
+            }
+          }}
+          style={{ willChange: "transform,width" }}
+        >
+          <form onSubmit={onSubmit} className="relative">
+            <label htmlFor="guest-input" className="sr-only">
+              Ask anything to start a guest chat
+            </label>
+            <input
+              id="guest-input"
+              ref={inputRef}
+              type="text"
+              placeholder="Ask anything to start a guest chat…"
+              value={value}
+              onChange={(e) => setValue((e.currentTarget as HTMLInputElement).value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
+              inputMode="text"
+              enterKeyHint="send"
+              aria-describedby="welcome-help"
+              className="w-full px-4 py-3 rounded-lg border border-zinc-300 bg-neutral-50 text-black
                        shadow-sm focus:outline-none focus:ring-2 focus:ring-black"
-            disabled={submitting}
-            // Clicking the input should also go to chat instantly (big CTA UX):
-            onFocus={(e) => {
-              // allow focusing/caret, but jump into chat
-              // stop bubbling to container (already focused)
-              e.stopPropagation();
-              void startChat();
-            }}
-          />
-        </form>
+              disabled={submitting || animating}
+              onFocus={(e) => {
+                // allow focusing/caret, but jump into chat
+                // stop bubbling to container (already focused)
+                e.stopPropagation();
+                void startChat();
+              }}
+            />
+          </form>
 
-        {/* Secondary controls */}
-        <div className="mt-4 flex items-center justify-between text-gray-500 text-sm">
-          <div className="flex items-center gap-3">
+          <div className="mt-4 flex items-center justify-between text-gray-500 text-sm">
+            <div className="flex items-center gap-3">
+              <button
+                title="Microphone"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void startChat(); // go into chat where mic lives
+                }}
+                disabled={submitting || animating}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 hover:text-black"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 19v3"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <rect x="9" y="2" width="6" height="13" rx="3"></rect>
+                </svg>
+              </button>
+
+              <button
+                title="Settings"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void startChat(); // or open a settings modal instead
+                }}
+                disabled={submitting || animating}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 hover:text-black"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22-.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l-.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+
             <button
-              title="Microphone"
               onClick={(e) => {
                 e.stopPropagation();
-                void startChat(); // go into chat where mic lives
+                void startChat(value);
               }}
+              className="text-white bg-black px-3 py-2 rounded hover:bg-gray-800 disabled:opacity-50"
+              disabled={submitting || animating}
+              title="Send"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 hover:text-black"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 19v3"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <rect x="9" y="2" width="6" height="13" rx="3"></rect>
-              </svg>
-            </button>
-
-            <button
-              title="Settings"
-              onClick={(e) => {
-                e.stopPropagation();
-                void startChat(); // or open a settings modal instead
-              }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 hover:text-black"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
+              Start
             </button>
           </div>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              void startChat(value || "Hello");
-            }}
-            className="text-white bg-black px-3 py-2 rounded hover:bg-gray-800 disabled:opacity-50"
-            disabled={submitting}
-            title="Send"
-          >
-            Start
-          </button>
-        </div>
+        </motion.div>
 
         <p className="mt-4 text-xs text-gray-400">
           By starting a guest chat, you agree to basic processing for quality and safety.{" "}
