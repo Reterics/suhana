@@ -51,6 +51,7 @@ export function App() {
     'login'
   );
   const [guestMode, setGuestMode] = useState(false);
+  const [initialInput, setInitialInput] = useState<string>('');
 
   if (!apiReady) {
     return (
@@ -296,12 +297,12 @@ export function App() {
         {(isAuthenticated || guestMode) ? (
           <div className="flex-1 flex flex-col">
             <ChatMessages messages={messages} />
-            <ChatToolbar onSend={handleSendMessage} />
+            <ChatToolbar onSend={handleSendMessage} initialInput={initialInput} />
           </div>
         ) : (
           <WelcomeScreen
-            handleSendMessage={handleSendMessage}
             setGuestMode={setGuestMode}
+            setInitialInput={setInitialInput}
           />
         )}
       </main>

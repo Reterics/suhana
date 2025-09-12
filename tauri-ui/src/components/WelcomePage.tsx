@@ -2,15 +2,15 @@ import { useRef, useState } from "preact/hooks";
 import { motion } from "motion/react";
 
 type WelcomeProps = {
-  handleSendMessage: (text: string) => Promise<void> | void;
   setGuestMode: (v: boolean) => void;
-  navigateToChat?: () => void; // call when first message is sent or when entering chat
+  setInitialInput?: (text: string) => void;
+  navigateToChat?: () => void; // optional external navigation handler
   examplePrompts?: string[];
 };
 
 export default function WelcomeScreen({
-  handleSendMessage,
   setGuestMode,
+  setInitialInput,
   navigateToChat,
   examplePrompts = [
     "Summarize this Git diff in plain English",
@@ -35,9 +35,7 @@ export default function WelcomeScreen({
       setSubmitting(true);
       setGuestMode(true);
 
-      if (prompt && prompt.trim()) {
-        await handleSendMessage(prompt.trim());
-      }
+      setInitialInput?.(prompt?.trim() || '');
 
       navigateToChat?.();
       setValue("");

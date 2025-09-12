@@ -4,12 +4,22 @@ import { useChat } from '../context/ChatContext.tsx';
 
 interface Props {
   onSend: (message: string) => void;
+  initialInput?: string;
 }
 
-export function ChatToolbar({ onSend }: Props) {
+export function ChatToolbar({ onSend, initialInput }: Props) {
   const { apiKey, setApiKey, transcribe } = useChat();
 
   const [input, setInput] = useState('');
+
+  // Prefill input when coming from Welcome screen
+  // TODO: Use context for this
+  useEffect(() => {
+    if (typeof initialInput === 'string') {
+      setInput(initialInput);
+    }
+  }, [initialInput]);
+
   const [volume, setVolume] = useState(0);
   const [micDeviceId, setMicDeviceId] = useState<string>('');
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
