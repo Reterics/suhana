@@ -87,6 +87,13 @@ vi.mock('./ProjectMetadata.tsx', () => ({
   ),
   __esModule: true
 }));
+// Mock motion/react so motion.div renders as a plain div without forwarding ref
+vi.mock('motion/react', () => ({
+  motion: {
+    // Do not forward ref to force immediate proceedStartChat path in component
+    div: (props: any) => <div {...props} />,
+  },
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();

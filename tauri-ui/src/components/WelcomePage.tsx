@@ -49,7 +49,7 @@ export default function WelcomeScreen({
 
     // Measure the bottom block and compute translation to (x=0, bottom=16px)
     const el = barRef.current;
-    if (typeof window !== "undefined" && el) {
+    if (typeof window !== "undefined" && el && typeof el.getBoundingClientRect === "function") {
       const rect = el.getBoundingClientRect();
       const targetBottomGap = 16; // px padding from bottom; set to 0 for flush
       const translateY = Math.max(0, window.innerHeight - rect.bottom - targetBottomGap);
@@ -59,10 +59,11 @@ export default function WelcomeScreen({
       setDy(translateY);
       setPendingPrompt(prompt);
       setAnimating(true);
-      return; // proceed happens on animation complete
+      return false; // proceed happens on animation complete
     }
 
     await proceedStartChat(prompt);
+    return true
   };
 
   const onSubmit: preact.JSX.GenericEventHandler<HTMLFormElement> = (e) => {
