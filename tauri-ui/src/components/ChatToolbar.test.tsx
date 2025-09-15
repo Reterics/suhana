@@ -72,7 +72,6 @@ describe('ChatToolbar', () => {
     expect(screen.getByTestId('icon-send')).toBeTruthy();
     expect(screen.getByTestId('icon-mic')).toBeTruthy();
     expect(screen.getByTestId('icon-settings')).toBeTruthy();
-    expect(screen.getByTestId('icon-testtube')).toBeTruthy();
   });
 
   it('allows typing and sending a message', () => {
@@ -128,8 +127,7 @@ describe('ChatToolbar', () => {
 
   it('toggles mic selector dropdown', () => {
     render(<ChatToolbar onSend={vi.fn()} />);
-    // Click TestTube icon to open mic selector
-    fireEvent.click(screen.getByTestId('icon-testtube').parentElement!);
+    fireEvent.click(screen.getByTestId('microphone-button')!);
 
     // Now selector is visible (opacity-100)
     const micSelect = screen.getByRole('combobox');
@@ -139,7 +137,7 @@ describe('ChatToolbar', () => {
   it('calls setMicDeviceId and testMic when selecting a device', async () => {
     // Mock testMic (must spy on ChatToolbar's instance, but not exported directly)
     render(<ChatToolbar onSend={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('icon-testtube').parentElement!);
+    fireEvent.click(screen.getByTestId('microphone-button')!);
 
     // Devices should be present as options
     expect(await screen.findByText('Mic 1')).toBeTruthy();

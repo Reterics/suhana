@@ -1,12 +1,13 @@
 import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
 import { configDefaults } from "vitest/config";
+import svgr from "vite-plugin-svgr";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [preact()],
+  plugins: [svgr(), preact()],
   clearScreen: false,
   server: {
     port: 1420,

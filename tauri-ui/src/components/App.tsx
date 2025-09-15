@@ -178,9 +178,11 @@ export function App() {
           )}
           {!isAuthenticated && (
             <div className="flex items-center">
-              <span className="text-lg font-semibold text-gray-700">
-                Suhana
-              </span>
+             <img
+              src={window.location.protocol + "//" + window.location.hostname + ":8000/assets/logos/suhana.png"}
+              alt="Suhana"
+              className="h-6 w-auto opacity-90"
+            />
             </div>
           )}
 

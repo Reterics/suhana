@@ -1,65 +1,109 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/preact';
+import WelcomeScreen from './WelcomePage';
 
-// Mock motion/react so motion.div renders as a plain div without forwarding ref
+// Mock motion/react so motion.* render as plain elements without forwarding refs
 vi.mock('motion/react', () => ({
   motion: {
-    // Do not forward ref to force immediate proceedStartChat path in component
-    div: (props: any) => <div {...props} />,
+    div: (props: any) => <div {...props} />, // no ref forwarding
+    img: (props: any) => <img {...props} />, // no ref forwarding
+    h1: (props: any) => <h1 {...props} />,
+    p: (props: any) => <p {...props} />,
   },
 }));
 
-import WelcomeScreen from './WelcomePage';
+// Mock icons and svg-react imports to lightweight components
+vi.mock('lucide-preact', () => ({
+  SendHorizontal: (props: any) => <svg data-testid="send-icon" {...props} />,
+  Settings: (props: any) => <svg data-testid="settings-icon" {...props} />,
+}));
+vi.mock('../assets/microphone.svg?react', () => ({
+  default: (props: any) => <svg data-testid="mic-icon" {...props} />,
+}));
 
-function setup(extraProps: Partial<Parameters<typeof WelcomeScreen>[0]> = {}) {
-  const setGuestMode = vi.fn();
-  const setInitialInput = vi.fn();
-  const navigateToChat = vi.fn();
+describe('WelcomeScreen', () => {
+  let setGuestMode: ReturnType<typeof vi.fn>;
+  let setInitialInput: ReturnType<typeof vi.fn>;
 
-  const utils = render(
-    <WelcomeScreen
-      setGuestMode={setGuestMode}
-      setInitialInput={setInitialInput}
-      navigateToChat={navigateToChat}
-      {...extraProps}
-    />
-  );
-
-  return { setGuestMode, setInitialInput, navigateToChat, ...utils };
-}
-
-describe('WelcomePage', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('renders heading, help text and example prompts', () => {
-    setup();
-    expect(screen.getByRole('heading', { name: /welcome to suhana/i })).toBeInTheDocument();
-    expect(screen.getByText(/your intelligent assistant/i)).toBeInTheDocument();
-    // default example prompts
-    const chips = screen.getAllByRole('button', { name: /summarize|generate unit tests|docker build/i });
-    expect(chips.length).toBeGreaterThanOrEqual(3);
+  beforeEach(() => {
+    setGuestMode = vi.fn();
+    setInitialInput = vi.fn();
   });
 
-  it('clicking an example prompt sets initial input and navigates', async () => {
-    const { setInitialInput, navigateToChat, setGuestMode } = setup({ examplePrompts: ['Say hi'] });
+  it('renders heading and UI elements', () => {
+    render(
+      <WelcomeScreen
+        setGuestMode={setGuestMode}
+        setInitialInput={setInitialInput}
+        examplePrompts={[
+          'Generate unit tests for my React hook',
+          'Why is my Docker build slow?',
+        ]}
+      />
+    );
 
-    const chip = screen.getByRole('button', { name: 'Say hi' });
-    fireEvent.click(chip);
+    expect(screen.getByRole('heading', { name: /welcome to suhana/i })).toBeTruthy();
+    const textarea = screen.getByPlaceholderText('Ask anything to start a guest chat…');
+    expect(textarea).toBeTruthy();
 
-    await waitFor(() => expect(setGuestMode).toHaveBeenCalledWith(true));
-    expect(setInitialInput).toHaveBeenCalledWith('Say hi');
-    expect(navigateToChat).toHaveBeenCalledTimes(1);
+    // Example prompt buttons
+    expect(screen.getByRole('button', { name: /generate unit tests for my react hook/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /why is my docker build slow\?/i })).toBeTruthy();
+
+    // Icons are rendered (from mocks)
+    expect(screen.getByTestId('mic-icon')).toBeTruthy();
+    expect(screen.getByTestId('settings-icon')).toBeTruthy();
+    expect(screen.getByTestId('send-icon')).toBeTruthy();
   });
 
-  it('focusing the input navigates without a prompt (empty initial input)', async () => {
-    const { navigateToChat, setInitialInput, setGuestMode } = setup();
+  it('starts chat when clicking an example prompt (immediate path without motion refs)', () => {
+    const prompt = 'Explain event loop';
+    render(
+      <WelcomeScreen
+        setGuestMode={setGuestMode}
+        setInitialInput={setInitialInput}
+        examplePrompts={[prompt]}
+      />
+    );
 
-    const input = screen.getByLabelText(/ask anything to start a guest chat/i);
-    fireEvent.focus(input);
+    fireEvent.click(screen.getByRole('button', { name: prompt }));
 
-    await waitFor(() => expect(setGuestMode).toHaveBeenCalledWith(true));
-    expect(setInitialInput).toHaveBeenCalledWith('');
-    expect(navigateToChat).toHaveBeenCalledTimes(1);
+    // Should pass prompt to initial input and immediately proceed to guest mode
+    expect(setInitialInput).toHaveBeenCalledWith(prompt);
+    expect(setGuestMode).toHaveBeenCalledWith(true);
   });
 
+  it('sends the typed value when clicking Send', () => {
+    render(
+      <WelcomeScreen setGuestMode={setGuestMode} setInitialInput={setInitialInput} />
+    );
+
+    const textarea = screen.getByPlaceholderText('Ask anything to start a guest chat…') as HTMLTextAreaElement;
+
+    // Update value via keyUp handler (component reads from currentTarget on keyUp)
+    textarea.value = '  hello world  ';
+    fireEvent.keyUp(textarea);
+
+    fireEvent.click(screen.getByTitle('Send'));
+
+    expect(setInitialInput).toHaveBeenCalledWith('hello world');
+    expect(setGuestMode).toHaveBeenCalledWith(true);
+  });
+
+  it('focusing the textarea triggers entering guest mode', () => {
+    render(
+      <WelcomeScreen setGuestMode={setGuestMode} setInitialInput={setInitialInput} />
+    );
+
+    const textarea = screen.getByPlaceholderText('Ask anything to start a guest chat…');
+
+    // set a value first so startChat(value) passes non-empty string
+    (textarea as HTMLTextAreaElement).value = 'Focus to start';
+    fireEvent.keyUp(textarea);
+
+    fireEvent.focus(textarea);
+
+    expect(setInitialInput).toHaveBeenCalledWith('Focus to start');
+    expect(setGuestMode).toHaveBeenCalledWith(true);
+  });
 });

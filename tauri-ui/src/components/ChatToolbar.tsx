@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Mic, SendHorizontal, Settings, TestTube } from 'lucide-preact';
+import { Mic, SendHorizontal, Settings } from 'lucide-preact';
 import { useChat } from '../context/ChatContext.tsx';
+import Microphone from "../assets/microphone.svg?react"
 
 interface Props {
   onSend: (message: string) => void;
@@ -35,6 +36,7 @@ export function ChatToolbar({ onSend, initialInput }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout>| null>(null);
 
   const intervalRef = useRef<number>();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     navigator.mediaDevices
@@ -152,18 +154,25 @@ export function ChatToolbar({ onSend, initialInput }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
+
   return (
     <div className="p-3 border-t border-t-gray-300 bg-white space-y-1">
       <textarea
+        ref={inputRef}
         rows={2}
         value={input}
         placeholder="Type a message..."
         onKeyUp={onKeyUp}
-        className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-none bg-neutral-50"
+        className="w-full border border-gray-300 rounded px-3 py-2 resize-none bg-neutral-50 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray"
       />
 
       <div
-        className={`flex items-center justify-between transition-all duration-300 ease-in-out min-h-8`}
+        className="flex items-center justify-between transition-all duration-300 ease-in-out min-h-8"
       >
         <div className="flex items-center gap-3 text-gray-500 flex-wrap">
           <button
@@ -174,8 +183,9 @@ export function ChatToolbar({ onSend, initialInput }: Props) {
               });
             }}
             title="Microphone"
+            data-testid="microphone-button"
           >
-            <TestTube className="h-5 w-5 hover:text-black" />
+            <Microphone className="h-5 w-5 hover:text-black" />
           </button>
           <button
             onClick={() => {
