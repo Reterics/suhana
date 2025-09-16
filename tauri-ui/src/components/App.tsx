@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
 import {BASE_URL, useChat} from '../context/ChatContext.tsx';
+import PrivacyPage from './PrivacyPage.tsx';
 import {
   Menu,
   FolderSearch,
@@ -52,6 +53,15 @@ export function App() {
   );
   const [guestMode, setGuestMode] = useState(false);
   const [initialInput, setInitialInput] = useState<string>('');
+
+  // minimal hash-based routing for Welcome/Privacy
+  const getRoute = () => (window.location.hash?.replace(/^#/, '') || '/');
+  const [route, setRoute] = useState<string>(getRoute());
+  useEffect(() => {
+    const onHashChange = () => setRoute(getRoute());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   if (!apiReady) {
     return (
@@ -296,7 +306,9 @@ export function App() {
           </div>
         </div>
 
-        {(isAuthenticated || guestMode) ? (
+        {route === '/privacy' ? (
+          <PrivacyPage />
+        ) : (isAuthenticated || guestMode) ? (
           <div className="flex-1 flex flex-col">
             <ChatMessages messages={messages} />
             <ChatToolbar onSend={handleSendMessage} initialInput={initialInput} />

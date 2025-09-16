@@ -220,7 +220,7 @@ export default function WelcomeScreen({
         >
           By starting a guest chat, you agree to basic processing for quality and safety.{" "}
           <a
-            href="/privacy"
+            href="#/privacy"
             className="underline"
             onClick={(e) => {
               // allow following the link without triggering the big CTA

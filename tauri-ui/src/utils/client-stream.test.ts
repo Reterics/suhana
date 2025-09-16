@@ -35,6 +35,7 @@ describe('consumeEncryptedStream', () => {
 
     vi.spyOn(subtle, 'exportKey').mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
 
+    // @ts-ignore
     vi.spyOn(subtle, 'importKey').mockImplementation(async (_format: string, _data: any, algo: any) => {
       // HKDF import vs X25519 import
       if (algo === 'HKDF') return { __hkdf: true } as any;
@@ -45,6 +46,7 @@ describe('consumeEncryptedStream', () => {
 
     vi.spyOn(subtle, 'deriveKey').mockImplementation(async () => ({ __aesKey: true } as any));
 
+    // @ts-ignore
     vi.spyOn(subtle, 'decrypt').mockImplementation(async (_alg: any, _key: any, _ct: ArrayBuffer) => {
       // our test-controlled decrypt implementation
       const res = await decryptImpl({ iv: new Uint8Array(), ct: new Uint8Array(new Uint8Array(_ct)) as any });
