@@ -309,10 +309,10 @@ export function App() {
         {route === '/privacy' ? (
           <PrivacyPage />
         ) : (isAuthenticated || guestMode) ? (
-          <div className="flex-1 flex flex-col">
+          <>
             <ChatMessages messages={messages} />
             <ChatToolbar onSend={handleSendMessage} initialInput={initialInput} />
-          </div>
+          </>
         ) : (
           <WelcomeScreen
             setGuestMode={setGuestMode}
