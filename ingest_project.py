@@ -21,6 +21,8 @@ import pathspec
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
+
+import engine.agent_core # We need this for register_backends
 from engine.utils import configure_logging, get_embedding_model, save_vectorstore
 from engine.project_detector import detect_project_type
 
@@ -147,16 +149,29 @@ def get_appropriate_splitter(
     )
 
 def should_exclude(path: Path, spec: Optional[pathspec.PathSpec]) -> bool:
+    """Decide whether a path should be excluded.
 
-    # Check if any part of the path starts with a dot (like .git, .venv)
+    Applies built-in exclusions first (dot-prefixed dirs, common build/output dirs).
+    If a .gitignore spec is provided, it is also applied; otherwise, only built-ins are used.
+    """
+    # Built-in exclusions by path parts
     for part in path.parts:
         if part.startswith('.') or part in {
-            'node_modules/', 'dist/', 'build/', 'venv/', '.venv', '/logs/',
-            '__pycache__', '/vectorstore/'
+            'node_modules', 'dist', 'build', 'venv', '.venv', 'logs',
+            '__pycache__', 'vectorstore'
         }:
             return True
 
-    rel_path = str(path.relative_to(spec.root if hasattr(spec, "root") else path.anchor))
+    # If no gitignore spec, do not exclude further
+    if spec is None:
+        return False
+
+    # Apply .gitignore-style matching relative to project root if available
+    base = getattr(spec, 'root', None)
+    try:
+        rel_path = str(path.relative_to(base)) if base else str(path)
+    except Exception:
+        rel_path = str(path)
     return spec.match_file(rel_path)
 
 def process_file(
@@ -194,11 +209,13 @@ def process_file(
 def load_gitignore_spec(project_path: Path) -> Optional[pathspec.PathSpec]:
     gitignore_path = project_path / ".gitignore"
     if not gitignore_path.exists():
-        logger.error('Gitignore is not found')
+        logger.debug(".gitignore not found; proceeding without it")
         return None
     lines = gitignore_path.read_text().splitlines()
     filtered_lines = [line for line in lines if line.strip() and not line.strip().startswith("#")]
     spec = pathspec.PathSpec.from_lines("gitwildmatch", filtered_lines)
+    # Attach root attribute to help relative matching
+    setattr(spec, 'root', project_path)
     return spec
 
 def index_project(

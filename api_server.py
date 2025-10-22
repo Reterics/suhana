@@ -416,7 +416,7 @@ def get_conversation(conversation_id: str, user_id: str = Depends(verify_api_key
         if not hasattr(get_conversation, '_project_metadata_cache'):
             get_conversation._project_metadata_cache = {}
 
-        if project_path in get_conversation._project_metadata_cache:
+        if project_path in get_conversation._project_metadata_cache and get_conversation._project_metadata_cache[project_path] is not None:
             profile["project_metadata"] = get_conversation._project_metadata_cache[project_path]
         else:
             metadata = load_metadata(project_path)
@@ -442,7 +442,7 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
     # Update conversation properties
     if req.mode:
         profile["mode"] = req.mode
-    if req.project_path:
+    if req.project_path is not None and req.project_path != "":
         profile["project_path"] = req.project_path
         profile["mode"] = "development"
         vectorstore_manager.get_vectorstore(profile)
@@ -467,8 +467,20 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
             pass
 
     # Get project metadata if available
-    if "project_path" in profile and profile["project_path"] is not None:
-        profile["project_metadata"] = load_metadata(profile["project_path"])
+    if "project_path" in profile and profile["project_path"] is not None and "project_metadata" not in profile:
+        # Use a cache for project metadata to avoid loading it repeatedly
+        project_path = profile["project_path"]
+        # Create a simple in-memory cache for project metadata
+        if not hasattr(get_conversation, '_project_metadata_cache'):
+            get_conversation._project_metadata_cache = {}
+
+        if project_path in get_conversation._project_metadata_cache:
+            profile["project_metadata"] = get_conversation._project_metadata_cache[project_path]
+        else:
+            metadata = load_metadata(project_path)
+            if metadata is not None:
+                get_conversation._project_metadata_cache[project_path] = metadata
+                profile["project_metadata"] = metadata
 
     # Save the conversation with user context
     conversation_store.save_conversation(conversation_id, profile, user_id)
@@ -478,7 +490,7 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
         "user_id": profile["user_id"],
         "mode": profile["mode"],
         "project_path": profile.get("project_path"),
-        "project_metadata": profile.get("project_metadata", {})
+        "project_metadata": profile.get("project_metadata", None)
     }
 
 @app.get("/health")

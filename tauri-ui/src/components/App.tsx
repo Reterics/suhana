@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 import Sidebar from './Sidebar.tsx';
-import {BASE_URL, useChat} from '../context/ChatContext.tsx';
+import { BASE_URL, useChat } from '../context/ChatContext.tsx';
 import PrivacyPage from './PrivacyPage.tsx';
 import {
   Menu,
@@ -19,7 +19,7 @@ import { ProjectMetadata } from './ProjectMetadata.tsx';
 import { Settings } from './Settings.tsx';
 import { Login } from './Login.tsx';
 import { Register } from './Register.tsx';
-import WelcomeScreen from "./WelcomePage.tsx";
+import WelcomeScreen from './WelcomePage.tsx';
 
 export function App() {
   const {
@@ -55,13 +55,58 @@ export function App() {
   const [initialInput, setInitialInput] = useState<string>('');
 
   // minimal hash-based routing for Welcome/Privacy
-  const getRoute = () => (window.location.hash?.replace(/^#/, '') || '/');
+  const getRoute = () => window.location.hash?.replace(/^#/, '') || '/';
   const [route, setRoute] = useState<string>(getRoute());
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  const updateConversationMetadata = useCallback(
+    async function updateConversationMetadata(mode: string, path: string) {
+      const response = await fetch(
+        `${BASE_URL}/conversations/${conversationId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { 'x-api-key': apiKey } : {})
+          },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            mode,
+            project_path: path
+          })
+        }
+      ).then(response => response.json());
+      if (response?.project_path) {
+        setProjectPath(response.project_path);
+      }
+      if (response?.mode) {
+        setCurrentMode(response.mode);
+      }
+      if (response?.project_metadata) {
+        setProjectMetadata(response.project_metadata);
+        // Automatically open the right sidebar when project metadata is available
+        setRightSidebarOpen(true);
+      }
+    },
+    [apiKey, conversationId, setProjectMetadata]
+  );
+
+  useEffect(() => {
+    if (!apiReady || conversationId) {
+      return;
+    }
+    void updateConversationMetadata(currentMode, projectPath);
+  }, [
+    currentMode,
+    conversationId,
+    apiReady,
+    projectPath,
+    updateConversationMetadata
+  ]);
 
   if (!apiReady) {
     return (
@@ -102,7 +147,7 @@ export function App() {
           };
           return copy;
         });
-      })
+      });
     }
     if (settings?.settings.streaming) {
       return await sendStreamingMessage(input, token => {
@@ -128,43 +173,8 @@ export function App() {
           return copy;
         });
       }
-    })
+    });
   }
-
-  async function updateConversationMetadata(mode: string, path: string) {
-    const response = await fetch(
-      `${BASE_URL}/conversations/${conversationId}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { 'x-api-key': apiKey } : {})
-        },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          mode,
-          project_path: path
-        })
-      }
-    ).then(response => response.json());
-    if (response?.project_path) {
-      setProjectPath(response.project_path);
-    }
-    if (response?.mode) {
-      setCurrentMode(response.mode);
-    }
-    if (response?.project_metadata) {
-      setProjectMetadata(response.project_metadata);
-      // Automatically open the right sidebar when project metadata is available
-      setRightSidebarOpen(true);
-    }
-  }
-
-  useEffect(() => {
-    if (conversationId) {
-      void updateConversationMetadata(currentMode, projectPath);
-    }
-  }, [currentMode]);
 
   //
   return (
@@ -188,11 +198,16 @@ export function App() {
           )}
           {!isAuthenticated && (
             <div className="flex items-center">
-             <img
-              src={window.location.protocol + "//" + window.location.hostname + ":8000/assets/logos/suhana.png"}
-              alt="Suhana"
-              className="h-6 w-auto opacity-90"
-            />
+              <img
+                src={
+                  window.location.protocol +
+                  '//' +
+                  window.location.hostname +
+                  ':8000/assets/logos/suhana.png'
+                }
+                alt="Suhana"
+                className="h-6 w-auto opacity-90"
+              />
             </div>
           )}
 
@@ -231,13 +246,15 @@ export function App() {
                       {projectPath.split('/').pop()}
                     </span>
                   )}
-                  <button
-                    data-testId="project-path-selector"
-                    onClick={() => setFolderSelectorOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1 text-sm rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 transition"
-                  >
-                    <FolderSearch className="h-4 w-4 text-neutral-600" />
-                  </button>
+                  {conversationId && (
+                    <button
+                      data-testId="project-path-selector"
+                      onClick={() => setFolderSelectorOpen(true)}
+                      className="flex items-center gap-2 px-3 py-1 text-sm rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 transition"
+                    >
+                      <FolderSearch className="h-4 w-4 text-neutral-600" />
+                    </button>
+                  )}
                 </div>
 
                 {projectMetadata && (
@@ -308,10 +325,13 @@ export function App() {
 
         {route === '/privacy' ? (
           <PrivacyPage />
-        ) : (isAuthenticated || guestMode) ? (
+        ) : isAuthenticated || guestMode ? (
           <>
             <ChatMessages messages={messages} />
-            <ChatToolbar onSend={handleSendMessage} initialInput={initialInput} />
+            <ChatToolbar
+              onSend={handleSendMessage}
+              initialInput={initialInput}
+            />
           </>
         ) : (
           <WelcomeScreen
@@ -349,23 +369,21 @@ export function App() {
         )}
       </aside>
 
-      {folderSelectorOpen && (
+      {folderSelectorOpen && conversationId && (
         <FolderSelector
           onSelect={path => {
             setFolderSelectorOpen(false);
             if (conversationId) {
               void updateConversationMetadata(currentMode, path);
             } else {
-              console.error('Conversation ID is not defined')
+              console.error('Conversation ID is not defined');
             }
           }}
           onClose={() => setFolderSelectorOpen(false)}
         />
       )}
 
-      {settingsOpen &&
-        <Settings onClose={() => setSettingsOpen(false)} />
-       }
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {authModalOpen && authModalView === 'login' && (
         <Login
           onClose={() => setAuthModalOpen(false)}
@@ -378,7 +396,6 @@ export function App() {
           onSwitchToLogin={() => setAuthModalView('login')}
         />
       )}
-
     </div>
   );
 }

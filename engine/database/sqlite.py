@@ -765,6 +765,19 @@ class SQLiteAdapter(DatabaseAdapter):
                 except Exception:
                     result["tags"] = []
 
+            blob = meta_row["data"]
+            if blob:
+                try:
+                    legacy = json.loads(blob)
+                    for k, v in legacy.items():
+                        if k in ("history", "messages"):
+                            continue
+                        # Only set if we didn't set it already from normalized columns
+                        if k not in result:
+                            result[k] = v
+                except Exception:
+                    pass
+
             return result
         except sqlite3.Error as e:
             self.logger.error(f"Error loading conversation: {e}")
