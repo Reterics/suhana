@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import pytest
 
-from engine.profile import (
+from engine.profile_utils import (
     load_profile_meta,
     save_profile_meta,
     summarize_profile_for_prompt
@@ -13,7 +13,7 @@ from engine.profile import (
 def temp_profile_path(monkeypatch):
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_path = Path(tmpdir) / "profile.json"
-        monkeypatch.setattr("engine.profile.PROFILE_PATH", fake_path)
+        monkeypatch.setattr("engine.profile_utils.PROFILE_PATH", fake_path)
         yield fake_path
 
 def test_load_returns_default_if_file_missing(temp_profile_path):

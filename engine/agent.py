@@ -1,7 +1,7 @@
 import subprocess
 
 from engine.engine_config import load_settings, switch_backend
-from engine.agent_core import handle_input
+from engine.agent_core import handle_input, register_backends
 from engine.di import container
 from engine.interfaces import VectorStoreManagerInterface
 from engine.tool_store import load_tools, match_and_run_tools
@@ -14,12 +14,14 @@ from engine.conversation_store import (
 )
 
 def run_agent():
+    register_backends()
+    user_id = "dev"
     settings = load_settings()
     backend = settings.get("llm_backend", "ollama")
     voice_mode = settings.get("voice", False)
     stream = settings.get("streaming", False)
-    conversation_id = create_new_conversation()
-    profile = load_conversation(conversation_id)
+    conversation_id = create_new_conversation(user_id)
+    profile = load_conversation(conversation_id, user_id)
     tools = load_tools()
     name = "Suhana"
 
@@ -47,14 +49,14 @@ def run_agent():
                 print("🛑 Voice mode disabled.")
                 continue
             elif command == "!load":
-                conversations = list_conversation_meta()
+                conversations = list_conversation_meta(user_id)
                 print("📜 Available conversations:")
                 for i, meta in enumerate(conversations):
                     print(f"{i + 1}. [{meta['title']}] – {meta['last_updated']}")
                 choice = input("Enter number to load: ").strip()
                 if choice.isdigit() and 1 <= int(choice) <= len(conversations):
                     conversation_id = conversations[int(choice) - 1]['id']
-                    profile = load_conversation(conversation_id)
+                    profile = load_conversation(conversation_id, user_id)
                     print(f"✅ Switched to conversation: {conversation_id}")
                 else:
                     print("❌ Invalid selection.")
@@ -128,7 +130,7 @@ def run_agent():
             else:
                 print(f"{name}: {response}\n")
 
-            save_conversation(conversation_id, profile)
+            save_conversation(conversation_id, profile, user_id)
             if voice_mode:
                 speak_text(response)
 

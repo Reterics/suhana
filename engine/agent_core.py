@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Union, Generator
 
 from engine.interfaces import VectorStoreInterface, VectorStoreManagerInterface, MemoryStoreInterface, LLMBackendInterface
-from engine.profile import summarize_profile_for_prompt
+from engine.profile_utils import summarize_profile_for_prompt
 from langchain_community.vectorstores import FAISS
 
 from engine.project_detector import detect_project_type
@@ -321,7 +321,8 @@ def handle_input(
         )
 
     # Build context from memories and documents
-    context_parts = []
+    context_parts = ["Do not expose private or sensitive information from memory, unless explicitly asked."]
+
     if mems:
         context_parts.append("MEMORY:\n" + "\n".join(f"- {m.page_content}" for m in mems))
 

@@ -22,12 +22,14 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 
-import engine.agent_core # We need this for register_backends
+from engine.agent_core import register_backends
 from engine.utils import configure_logging, get_embedding_model, save_vectorstore
 from engine.project_detector import detect_project_type
 
 # Configure logging
 logger = configure_logging(__name__)
+
+register_backends()
 
 # Language-specific file extensions
 LANGUAGE_EXTENSIONS: Dict[str, Set[str]] = {
