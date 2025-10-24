@@ -6,8 +6,8 @@ This module defines the base interface for all database adapters.
 
 import abc
 import logging
-from typing import Dict, Any, List, Optional, Tuple, Type
 from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
 
 from engine.security.database_access import apply_database_access_controls
 

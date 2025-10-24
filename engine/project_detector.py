@@ -4,12 +4,13 @@ Project Detector for Suhana AI Assistant
 This module provides functionality to detect project types and extract metadata
 from project files. It supports JavaScript, TypeScript, and Python projects.
 """
-from pathlib import Path
 import json
-from typing import Dict, Any, Optional, List, Tuple
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 from engine.di import container
 from engine.interfaces import LLMBackendInterface
+
 
 def detect_javascript_project(project_path: Path) -> Optional[Dict[str, Any]]:
     """

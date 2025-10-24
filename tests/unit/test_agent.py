@@ -60,7 +60,7 @@ class TestRunAgent:
         # Verify the function called the expected dependencies
         mock_load_settings.assert_called_once()
         mock_create_conversation.assert_called_once()
-        mock_load_conversation.assert_called_once_with("test-conversation-id")
+        mock_load_conversation.assert_called_once_with("test-conversation-id", "dev")
         mock_load_tools.assert_called_once()
         mock_input.assert_called_once()
 
@@ -98,7 +98,7 @@ class TestRunAgent:
         # Verify the function called the expected dependencies
         assert mock_input.call_count == 2
         mock_handle_input.assert_called_once_with("hello", "ollama", mock_profile, mock_load_settings.return_value)
-        mock_save_conversation.assert_called_once_with("test-conversation-id", mock_profile)
+        mock_save_conversation.assert_called_once_with("test-conversation-id", mock_profile, "dev")
 
     @patch("engine.agent.load_settings")
     @patch("engine.agent.create_new_conversation")
@@ -386,7 +386,7 @@ def test_voice_toggle_and_speak_text(
         # speak_text called for the model reply while voice_mode True
         mock_speak.assert_called_once_with("A reply")
         # conversation saved after the normal turn
-        mock_save.assert_called_once_with("cid", profile)
+        mock_save.assert_called_once_with("cid", profile, "dev")
 
 
 @patch("engine.agent.load_settings")
@@ -418,7 +418,7 @@ def test_streaming_tokens_path(mock_load_tools, mock_load_conv, mock_create_conv
         agent.run_agent()
 
         mock_handle.assert_called_once_with("hi", "ollama", profile, mock_load_settings.return_value)
-        mock_save.assert_called_once_with("cid", profile)
+        mock_save.assert_called_once_with("cid", profile, "dev")
 
 
 @patch("engine.agent.load_settings")
@@ -448,7 +448,7 @@ def test_load_conversation_happy_path(mock_list_meta, mock_load_tools, mock_load
         agent.run_agent()
 
         # It should switch to conversations[1]['id']
-        assert mock_load_conv.call_args_list[-1] == call("cid-2")
+        assert mock_load_conv.call_args_list[-1] == call("cid-2", "dev")
 
 
 @patch("engine.agent.load_settings")

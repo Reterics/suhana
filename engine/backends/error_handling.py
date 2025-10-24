@@ -7,7 +7,7 @@ ensuring consistent error messages and logging across different backends.
 
 import logging
 from functools import wraps
-from typing import Callable, Any, Optional, Dict
+from typing import Callable, Any
 
 logger = logging.getLogger(__name__)
 

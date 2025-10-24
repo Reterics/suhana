@@ -1,15 +1,14 @@
 import json
+import os
 import tempfile
 from pathlib import Path
-
-import os
 from typing import List
 
 try:
     import whisper  # optional, heavy dependency
 except Exception:
     whisper = None  # allow importing api_server without whisper installed
-from fastapi import FastAPI, Header, HTTPException, Depends, File, UploadFile, Request
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -693,7 +692,7 @@ def update_profile(user_id: str, profile_update: ProfileUpdate, auth_user_id: st
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
     # Update only the specified fields
-    update_dict = profile_update.dict(exclude_unset=True, exclude_none=True)
+    update_dict = profile_update.model_dump(exclude_unset=True, exclude_none=True)
     for key, value in update_dict.items():
         profile[key] = value
 

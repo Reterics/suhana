@@ -12,7 +12,7 @@ The DIContainer is used in the codebase to:
 While it's a simple implementation, it provides valuable functionality for dependency management.
 """
 
-from typing import Dict, Any, Callable, Optional, Type, TypeVar
+from typing import Dict, Any, Callable, Type, TypeVar
 
 T = TypeVar('T')
 
