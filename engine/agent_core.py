@@ -276,10 +276,6 @@ def register_backends():
     container.register("claude_backend", LLMBackendAdapter(query_claude))
 
 
-# Register backends
-register_backends()
-
-
 @error_boundary(fallback_value="I'm sorry, I encountered an error processing your request.", error_type=BackendError)
 def handle_input(
     user_input: str,

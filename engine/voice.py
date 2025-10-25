@@ -4,6 +4,7 @@ import tempfile
 import subprocess
 import sounddevice as sd
 import numpy as np
+from functools import lru_cache
 
 # Ensure numpy._core.multiarray is properly initialized before importing TTS
 # This prevents the "AttributeError: module 'numpy._core' has no attribute 'multiarray'" error
@@ -27,17 +28,17 @@ if hasattr(np._core, 'multiarray') and not hasattr(np, '_MULTIARRAY_PATCHED'):
     if not hasattr(np, 'multiarray'):
         np.multiarray = np._core.multiarray
 
-import whisper
-from TTS.api import TTS
 import soundfile as sf
 import time
 
 _model = None
 _tts = None
 
+@lru_cache
 def get_whisper_model():
     global _model
     if _model is None:
+        import whisper
         _model = whisper.load_model("base")  # or "tiny", "small", etc.
     return _model
 
@@ -154,6 +155,7 @@ def speak_text(text):
     global _tts
     if _tts is None:
         print("🔊 Initializing text-to-speech engine...")
+        from TTS.api import TTS
         _tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
     print("🔊 Generating speech...")
     try:

@@ -266,7 +266,7 @@ export function ChatProvider({
   useEffect(() => {
     if (userSession && loading) {
       onLoad().then(() => setLoading(false));
-      void listConversations();
+      //void listConversations();
     } else if (!userSession && !loading) {
       setLoading(false);
     }

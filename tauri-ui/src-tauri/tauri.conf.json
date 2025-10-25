@@ -18,7 +18,7 @@
         "resizable": false,
         "decorations": false,
         "transparent": true,
-        "visible": true,
+        "visible": false,
         "width": 400,
         "height": 300
       },

@@ -4,10 +4,13 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-try:
-    import whisper  # optional, heavy dependency
-except Exception:
-    whisper = None  # allow importing api_server without whisper installed
+import sys
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
+
+print(f"Loading [startup]")
+from engine.voice import get_whisper_model
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,22 +26,45 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from engine.backends.ollama import get_downloaded_models
 from engine.crypto_query import b64d, derive_aes256_gcm, ndjson_encrypted_stream, b64u
+print(f"Loading [settings_manager]")
 from engine.settings_manager import SettingsManager
-from engine.agent_core import handle_input
+print(f"Loading [agent_core]")
+from engine.agent_core import handle_input, register_backends
+
+print(f"Loading [di]")
 from engine.di import container
+print(f"Loading [conversation_store]")
 from engine.conversation_store import (
     DEFAULT_CATEGORY,
     conversation_store
 )
+print(f"Loading [interfaces]")
 from engine.interfaces import VectorStoreManagerInterface
+print(f"Loading [utils]")
 from engine.utils import load_metadata
+print(f"Loading [user_manager]")
 from engine.user_manager import UserManager
-
+print(f"Loading [vectorstore_manager]")
 # Export the vectorstore_manager instance for direct imports
 vectorstore_manager = container.get_typed("vectorstore_manager", VectorStoreManagerInterface)
+print(f"Loading [UserManager]")
 
 # Create UserManager instance
-user_manager = UserManager()
+_user_manager = None
+# Initialize SettingsManager for per-user settings handling
+_settings_manager = None
+
+def get_user_manager():
+    global _user_manager
+    if _user_manager is None:
+        _user_manager = UserManager()
+    return _user_manager
+
+def get_settings_manager():
+    global _settings_manager
+    if _settings_manager is None:
+        _settings_manager = SettingsManager()
+    return _settings_manager
 
 app = FastAPI()
 app.add_middleware(
@@ -51,8 +77,6 @@ app.add_middleware(
 asset_path = Path(__file__).parent / "assets"
 app.mount("/assets", StaticFiles(directory=asset_path), name="assets")
 
-# Initialize SettingsManager for per-user settings handling
-settings_manager = SettingsManager()
 # Lazy-load whisper model when used; keep import optional to avoid test-time failures
 _model_whisper = None
 
@@ -211,7 +235,7 @@ def query(req: QueryRequest, user_id: str = Depends(verify_or_guest)):
         return {"response": "No input provided", "conversation_id": req.conversation_id}
 
     # Load per-user settings for this request
-    user_settings = settings_manager.get_settings(user_id)
+    user_settings = get_settings_manager().get_settings(user_id)
     reply = handle_input(req.input, req.backend, profile, user_settings)
     conversation_store.save_conversation(req.conversation_id, profile, user_id)
     return {"response": reply, "conversation_id": req.conversation_id}
@@ -220,14 +244,10 @@ def query(req: QueryRequest, user_id: str = Depends(verify_or_guest)):
 async def transcribe(audio: UploadFile = File(...)):
     # Ensure whisper is available
     global _model_whisper
-    if whisper is None:
-        # Optional dependency not installed
-        raise HTTPException(status_code=501, detail="Speech-to-text not available: whisper is not installed")
-
     # Lazy-load the model on first use
     if _model_whisper is None:
         try:
-            _model_whisper = whisper.load_model("base")
+            _model_whisper = get_whisper_model()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to load whisper model: {e}")
 
@@ -249,7 +269,7 @@ def query_stream(req: QueryRequest, user_id: str = Depends(verify_or_guest)):
             yield "No input provided"
         return StreamingResponse(simple_generator(), media_type="text/plain")
 
-    user_settings = settings_manager.get_settings(user_id)
+    user_settings = get_settings_manager().get_settings(user_id)
     generator = handle_input(req.input, req.backend, profile, user_settings, force_stream=True)
 
     def saving_generator():
@@ -282,7 +302,7 @@ async def query_stream(
         return StreamingResponse(simple_generator(), media_type=media_type)
 
         # Your existing token generator (sync iterator)
-    user_settings = settings_manager.get_settings(user_id)
+    user_settings = get_settings_manager().get_settings(user_id)
     generator = handle_input(req.input, req.backend, profile, user_settings, force_stream=True)
 
     def saving_iter():
@@ -361,7 +381,7 @@ def get_conversations(user_id: str = Depends(verify_api_key)):
         all_conversations = []
         conversation_ids = set()
 
-        users = user_manager.list_users()
+        users = get_user_manager().list_users()
 
         # Function to get conversations for a user
         def get_user_conversations(user):
@@ -450,6 +470,7 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
     if req.input:
         conversation_store.save_conversation(conversation_id, profile, user_id)
 
+        settings_manager = get_settings_manager()
         # Update recent projects in settings (per-user) using settings_manager
         try:
             if req.project_path:
@@ -494,7 +515,11 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    global _user_manager
+    global _settings_manager
+    if _user_manager is not None and _settings_manager is not None:
+        return {"status": "ok"}
+    raise HTTPException(503, "Service Unavailable")
 
 @app.get("/browse-folders")
 def browse_folders(path: str = "", user_id: str = Depends(verify_api_key)):
@@ -571,7 +596,7 @@ def browse_folders(path: str = "", user_id: str = Depends(verify_api_key)):
     # Get recent projects from per-user settings via settings_manager
     recent_projects = []
     try:
-        user_settings = settings_manager.get_settings(user_id)
+        user_settings = get_settings_manager().get_settings(user_id)
         recent_projects = user_settings.get("recent_projects", [])
     except Exception:
         pass
@@ -591,7 +616,7 @@ def get_user_settings(user_id: str, _: str = Depends(verify_api_key)):
     """
     Get MERGED settings for a specific user (global + overrides).
     """
-    current_settings = settings_manager.get_settings(user_id)
+    current_settings = get_settings_manager().get_settings(user_id)
 
     llm_options = {
         "ollama": get_downloaded_models(),
@@ -624,6 +649,7 @@ def update_user_settings(user_id: str, body: dict, auth_user_id: str = Depends(v
     if auth_user_id != user_id:
         raise HTTPException(status_code=403, detail="You can only update your own settings")
 
+    settings_manager = get_settings_manager()
     # Load merged settings to apply partial update
     merged = settings_manager.get_settings(user_id)
 
@@ -663,7 +689,7 @@ def get_profile(user_id: str, _: str = Depends(verify_api_key)):
     Returns:
         Dictionary containing the user's profile information
     """
-    profile = user_manager.get_profile(user_id)
+    profile = get_user_manager().get_profile(user_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
@@ -687,7 +713,7 @@ def update_profile(user_id: str, profile_update: ProfileUpdate, auth_user_id: st
         if not check_permission(auth_user_id, Permission.MANAGE_USERS):
             raise HTTPException(status_code=403, detail="You can only update your own profile")
 
-    profile = user_manager.get_profile(user_id)
+    profile = get_user_manager().get_profile(user_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
@@ -696,7 +722,7 @@ def update_profile(user_id: str, profile_update: ProfileUpdate, auth_user_id: st
     for key, value in update_dict.items():
         profile[key] = value
 
-    success = user_manager.save_profile(user_id, profile)
+    success = get_user_manager().save_profile(user_id, profile)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save profile")
 
@@ -713,7 +739,7 @@ def get_preferences(user_id: str, _: str = Depends(verify_api_key)):
     Returns:
         Dictionary containing the user's preferences
     """
-    preferences = user_manager.get_preferences(user_id)
+    preferences = get_user_manager().get_preferences(user_id)
     if not preferences:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
@@ -739,12 +765,12 @@ def update_preferences(user_id: str, preferences_update: PreferencesUpdate, auth
 
     # Update only the specified preferences
     update_dict = preferences_update.dict(exclude_unset=True, exclude_none=True)
-    success = user_manager.update_preferences(user_id, update_dict)
+    success = get_user_manager().update_preferences(user_id, update_dict)
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
-    return {"preferences": user_manager.get_preferences(user_id)}
+    return {"preferences": get_user_manager().get_preferences(user_id)}
 
 @app.get("/profile/{user_id}/personalization")
 def get_personalization(user_id: str, _: str = Depends(verify_api_key)):
@@ -757,7 +783,7 @@ def get_personalization(user_id: str, _: str = Depends(verify_api_key)):
     Returns:
         Dictionary containing the user's personalization settings
     """
-    personalization = user_manager.get_personalization(user_id)
+    personalization = get_user_manager().get_personalization(user_id)
     if not personalization:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
@@ -783,12 +809,12 @@ def update_personalization(user_id: str, personalization_update: Personalization
 
     # Update only the specified personalization settings
     update_dict = personalization_update.dict(exclude_unset=True, exclude_none=True)
-    success = user_manager.update_personalization(user_id, update_dict)
+    success = get_user_manager().update_personalization(user_id, update_dict)
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update personalization settings")
 
-    return {"personalization": user_manager.get_personalization(user_id)}
+    return {"personalization": get_user_manager().get_personalization(user_id)}
 
 @app.get("/profile/{user_id}/privacy")
 def get_privacy_settings(user_id: str, _: str = Depends(verify_api_key)):
@@ -801,7 +827,7 @@ def get_privacy_settings(user_id: str, _: str = Depends(verify_api_key)):
     Returns:
         Dictionary containing the user's privacy settings
     """
-    privacy_settings = user_manager.get_privacy_settings(user_id)
+    privacy_settings = get_user_manager().get_privacy_settings(user_id)
     if not privacy_settings:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
@@ -827,12 +853,12 @@ def update_privacy_settings(user_id: str, privacy_update: PrivacyUpdate, auth_us
 
     # Update only the specified privacy settings
     update_dict = privacy_update.dict(exclude_unset=True, exclude_none=True)
-    success = user_manager.update_privacy_settings(user_id, update_dict)
+    success = get_user_manager().update_privacy_settings(user_id, update_dict)
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update privacy settings")
 
-    return {"privacy": user_manager.get_privacy_settings(user_id)}
+    return {"privacy": get_user_manager().get_privacy_settings(user_id)}
 
 @app.get("/users")
 def list_users(user_id: str = Depends(verify_api_key)):
@@ -851,7 +877,7 @@ def list_users(user_id: str = Depends(verify_api_key)):
     if not check_permission(user_id, Permission.VIEW_USERS):
         raise HTTPException(status_code=403, detail="You don't have permission to view users")
 
-    users = user_manager.list_users()
+    users = get_user_manager().list_users()
     return {"users": users}
 
 @app.get("/health")
@@ -1019,7 +1045,7 @@ def register_user(user_data: UserRegistration):
         Dictionary containing the new user ID and API key
     """
     # Create the user
-    success, message = user_manager.create_user(
+    success, message = get_user_manager().create_user(
         username=user_data.username,
         password=user_data.password,
         name=user_data.name,
@@ -1060,6 +1086,7 @@ def guest_login():
     from engine.api_key_store import get_api_key_manager, DEFAULT_RATE_LIMIT
     from engine.security.access_control import Role, get_access_control_manager
 
+    user_manager = get_user_manager()
     # Generate a simple guest username
     # Try a few times to avoid collision
     username = None
@@ -1122,6 +1149,7 @@ def login_user(user_data: UserLogin):
     Returns:
         Dictionary containing the user ID and API key
     """
+    user_manager = get_user_manager()
     # Authenticate the user
     success, token = user_manager.authenticate(
         username=user_data.username,
@@ -1173,3 +1201,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+register_backends()
+get_user_manager()
+get_settings_manager()
+sys.stdout.reconfigure(line_buffering=False)
+sys.stderr.reconfigure(line_buffering=False)

@@ -1,51 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
+<head>
+    <meta charset="UTF-8"/>
     <title>Starting Suhana...</title>
     <style>
         * {
-        box-sizing: border-box;
-      }
+            box-sizing: border-box;
+        }
 
-      body, html {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        font-family: system-ui, sans-serif;
-        background-color: #111827;
-        color: #9ca3af;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: system-ui, sans-serif;
+            background-color: #e9f0ff;
+            color: #9ca3af;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-      .splash-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        font-size: 1.25rem;
-      }
+        .splash-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            font-size: 1.25rem;
+        }
 
-      .logo-row {
-        display: flex;
-        align-items: center;
-      }
+        .logo-row {
+            display: flex;
+            align-items: center;
+        }
 
-      .logo-row img {
-        height: 2.5rem;
-        margin-right: 0.5rem;
-      }
+        .logo-row img {
+            height: 2.5rem;
+            margin-right: 0.5rem;
+        }
+
+        .logo-row-wrapper {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #log {
+            font-size: small;
+        }
     </style>
-  </head>
-  <body>
-    <div class="splash-container">
-      <div class="logo-row">
-        <img src="./suhana.png" alt="Suhana logo" />
-        Suhana is starting...
-      </div>
+</head>
+<body>
+<div class="splash-container">
+    <div class="logo-row-wrapper">
+        <div class="logo-row">
+            <img src="./suhana.png" alt="Suhana logo"/>Suhana
+        </div>
+        <div id="log"></div>
+
     </div>
-  </body>
+</div>
+
+<script>
+    (function () {
+        const logEl = document.getElementById("log") || document.body;
+        const log = (s) => {
+            if (logEl.textContent != null) {
+                logEl.textContent = s;
+            } else {
+                console.log(s);
+            }
+        };
+
+        const I = window.__TAURI_INTERNALS__;
+        if (!I || typeof I.invoke !== "function" || typeof I.transformCallback !== "function") {
+            log("[error] 1");
+            return;
+        }
+
+        // Minimal helper for Tauri v2 event plugin using internals.
+        function listenInternal(event, handler) {
+            // Register a callback Tauri can call back into:
+            const cbId = I.transformCallback((payload) => {
+                try {
+                    const data = payload && typeof payload === "object" && "payload" in payload
+                        ? payload.payload
+                        : payload;
+                    handler({event, payload: data});
+                } catch (e) {
+                    console.error(e);
+                }
+            });
+
+            return I.invoke("plugin:event|listen", {
+                event,
+                target: {kind: "Webview", label: "splashscreen"},
+                handler: cbId
+            }).then((id) => ({
+                unlisten: () => I.invoke("plugin:event|unlisten", {id}).catch(() => {
+                })
+            }));
+        }
+
+        listenInternal("backend-log", (e) => log(String(e.payload)))
+            .catch(err => log("[error] 2"));
+    })();
+</script>
+
+
+</body>
 </html>
