@@ -4,8 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-from engine.codegen_agent import RunRequest, RunResponse, run_once, build_repo_map, LLMBroker, PLANNER_SYSTEM, \
-    run_stream
+from engine.codegen_agent import RunRequest, RunResponse, run_once, run_stream
 # allow importing api_server without whisper installed
 import sys
 sys.stdout.reconfigure(line_buffering=True)
@@ -1196,23 +1195,6 @@ def login_user(user_data: UserLogin):
 def api_run(req: RunRequest) -> RunResponse:
     return run_once(req)
 
-@app.post("/agent/plan")
-def api_plan(req: RunRequest):
-    repo = Path(req.repo).resolve()
-    repo_map = build_repo_map(repo, max_files=req.max_map, include_globs=req.allow)
-    user = (
-        "[TASK]\n" + req.ticket + "\n\n" +
-        "[REPO_MAP]\n" + json.dumps(repo_map, ensure_ascii=False, indent=2) + "\n\n" +
-        "[RELEVANT_EXCERPTS]\n(controller collects later)\n\n" +
-        "[CONSTRAINTS]\n" + "\n".join(req.constraints or [])
-    )
-    broker = LLMBroker()
-    out = broker.ask(req.models.planner, PLANNER_SYSTEM, user, req.profile, req.settings)
-    try:
-        obj = json.loads(out)
-        return JSONResponse(obj)
-    except Exception:
-        return JSONResponse({"raw": out})
 
 @app.post("/agent/run/stream")
 def api_run_stream(req: RunRequest):
