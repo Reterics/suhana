@@ -1,14 +1,9 @@
 import { createContext } from 'preact';
-import {
-  StateUpdater,
-  useContext,
-  useEffect,
-  useState
-} from 'preact/hooks';
+import { StateUpdater, useContext, useEffect, useState } from 'preact/hooks';
 import { Dispatch } from 'preact/compat';
 import { v4 } from 'uuid';
-import {consumeEncryptedStream} from "../utils/client-stream.ts";
-import {FolderInfo, PathPart} from "../components/FolderSelector.tsx";
+import { consumeEncryptedStream } from '../utils/client-stream.ts';
+import { FolderInfo, PathPart } from '../components/FolderSelector.tsx';
 
 export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
@@ -27,12 +22,12 @@ export type SettingsType = {
   openai_api_key?: string;
   gemini_api_key?: string;
   claude_api_key?: string;
-}
+};
 
 export type AppSettings = {
-  settings: SettingsType
-  llm_options: LLMOptions
-}
+  settings: SettingsType;
+  llm_options: LLMOptions;
+};
 
 export interface UserProfile {
   name: string;
@@ -43,7 +38,7 @@ export interface UserProfile {
   preferences: UserPreferences;
   personalization: UserPersonalization;
   privacy: UserPrivacy;
-  history: any[];
+  history: unknown[];
 }
 
 export interface UserPreferences {
@@ -102,16 +97,25 @@ interface ChatState {
   error: string | null;
   setApiKey: (key: string) => void;
   setMessages: Dispatch<StateUpdater<ChatMessage[]>>;
-  sendMessage: (input: string, backend?: string) => Promise<string>;
+  sendMessage: (
+    input: string,
+    backend?: string,
+    mode?: string,
+    project_path?: string
+  ) => Promise<string>;
   sendStreamingMessage: (
     input: string,
     onToken: (token: string) => void,
-    backend?: string
+    backend?: string,
+    mode?: string,
+    project_path?: string
   ) => Promise<void>;
   sendSecuredStreamingMessage: (
     input: string,
     onToken: (token: string) => void,
-    backend?: string
+    backend?: string,
+    mode?: string,
+    project_path?: string
   ) => Promise<void>;
   conversationList: ConversationMeta[];
   loadConversation: (id: string) => Promise<void>;
@@ -120,9 +124,7 @@ interface ChatState {
   projectMetadata: ProjectMeta | null;
   setProjectMetadata: Dispatch<StateUpdater<ProjectMeta | null>>;
   settings: AppSettings | null;
-  updateSettings: (
-    settings: Partial<AppSettings>
-  ) => Promise<AppSettings>;
+  updateSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
 
   // User session management
   userSession: UserSession | null;
@@ -131,13 +133,15 @@ interface ChatState {
   isAuthenticated: boolean;
 
   // User profile management
-  getUsers: () => Promise<{ users: any[] }>;
+  getUsers: () => Promise<{ users: unknown[] }>;
   getProfile: (userId?: string) => Promise<{ profile: UserProfile }>;
   updateProfile: (
     userId: string,
     profile: Partial<UserProfile>
   ) => Promise<{ profile: UserProfile }>;
-  getPreferences: (userId?: string) => Promise<{ preferences: UserPreferences }>;
+  getPreferences: (
+    userId?: string
+  ) => Promise<{ preferences: UserPreferences }>;
   updatePreferences: (
     userId: string,
     preferences: Partial<UserPreferences>
@@ -162,7 +166,11 @@ interface ChatState {
     name?: string
   ) => Promise<{ user_id: string; api_key: string }>;
 
-  getFolders: (path: string) => Promise<BrowseFoldersResponse | null>
+  // Agent mode
+  useAgent: boolean;
+  setUseAgent: (enabled: boolean) => void;
+
+  getFolders: (path: string) => Promise<BrowseFoldersResponse | null>;
 }
 
 export interface ConversationMeta {
@@ -190,7 +198,9 @@ async function fetchWithKey(
   maxRetries = 3,
   retryDelayMs = 1000
 ): Promise<Record<string, unknown> | null | undefined> {
-  const isGet = (options.method || 'GET').toUpperCase() === 'GET' || options.method === undefined;
+  const isGet =
+    (options.method || 'GET').toUpperCase() === 'GET' ||
+    options.method === undefined;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetch(url, {
@@ -247,11 +257,13 @@ export function ChatProvider({
   const [loading, setLoading] = useState<boolean>(!!userSession);
   const apiKey = userSession?.apiKey || '';
   const setApiKey = (key: string) => {
-    setUserSession((prev) =>
-      prev ? ({...prev, apiKey: key}) : null);
-  }
+    setUserSession(prev => (prev ? { ...prev, apiKey: key } : null));
+  };
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  // Agent mode toggle (UI dev-only)
+  const [useAgent, setUseAgent] = useState<boolean>(false);
 
   const apiReady = !error && !loading;
 
@@ -270,7 +282,7 @@ export function ChatProvider({
     } else if (!userSession && !loading) {
       setLoading(false);
     }
-  }, [userSession, loading])
+  }, [userSession, loading]);
 
   const listConversations = async () => {
     const conversations = await fetchWithKey(
@@ -300,7 +312,7 @@ export function ChatProvider({
     setConversationId(v4());
     setMessages([]);
     setProjectMetadata(null);
-  }
+  };
 
   const addTemporaryConversation = (input: string) => {
     const isoNow = new Date().toISOString().substring(0, 23);
@@ -312,8 +324,8 @@ export function ChatProvider({
         created: isoNow,
         id: conversationId
       }
-    ])
-  }
+    ]);
+  };
 
   const sendMessage = async (
     input: string,
@@ -321,11 +333,65 @@ export function ChatProvider({
     mode?: string,
     project_path?: string
   ) => {
-    const effectiveBackend = backend ?? settings?.settings.llm_backend ?? 'ollama';
+    const effectiveBackend =
+      backend ?? settings?.settings.llm_backend ?? 'ollama';
+
+    // If Agent mode is enabled, route to /agent/run
+    if (useAgent) {
+      const modelName = 'codellama';
+      if (!project_path) {
+        alert(project_path + ' is empty');
+        return '';
+      }
+      const payload = {
+        repo: project_path || '',
+        ticket: input,
+        allow: ['**'],
+        backend_name: effectiveBackend,
+        models: {
+          planner: modelName,
+          coder: modelName,
+          critic: modelName
+        },
+        constraints: [],
+        timeout_sec: 900,
+        max_map: 1500,
+        profile: {},
+        settings: settings?.settings || {}
+      };
+      const data = (await fetchWithKey(
+        `${BASE_URL}/agent/run`,
+        apiKey,
+        setError,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }
+      )) as {
+        status: string;
+        touched_files: string[];
+        plan: string;
+      };
+      if (messages.length === 0) {
+        addTemporaryConversation(input);
+      }
+      // Convert agent response to a human-readable string for the chat bubble
+      const status = data?.status;
+      const touched = data?.touched_files;
+      const plan = data?.plan;
+      let summary = '';
+      if (status) summary += `Status: ${status}\n`;
+      if (Array.isArray(touched) && touched.length)
+        summary += `Touched files (${touched.length}):\n- ${touched.slice(0, 20).join('\n- ')}\n`;
+      if (plan) summary += `Plan keys: ${Object.keys(plan).join(', ')}`;
+      return summary || 'Agent run completed.';
+    }
+
     const data = await fetchWithKey(`${BASE_URL}/query`, apiKey, setError, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         input,
@@ -336,7 +402,7 @@ export function ChatProvider({
       })
     });
     if (messages.length === 0) {
-      addTemporaryConversation(input)
+      addTemporaryConversation(input);
     }
     return data?.response as string;
   };
@@ -348,7 +414,78 @@ export function ChatProvider({
     mode?: string,
     project_path?: string
   ) => {
-    const effectiveBackend = backend ?? settings?.settings.llm_backend ?? 'ollama';
+    const effectiveBackend =
+      backend ?? settings?.settings.llm_backend ?? 'ollama';
+
+    if (useAgent) {
+      if (!project_path) {
+        alert(project_path + ' is empty');
+        return;
+      }
+      const modelName = 'codellama';
+
+      const res = await fetch(`${BASE_URL}/agent/run/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'x-api-key': apiKey } : {})
+        },
+        body: JSON.stringify({
+          repo: project_path || '',
+          ticket: input,
+          allow: ['**'],
+          backend_name: effectiveBackend,
+          models: { planner: modelName, coder: modelName, critic: modelName },
+          constraints: [],
+          timeout_sec: 900,
+          max_map: 1500,
+          profile: {},
+          settings: settings?.settings || {}
+        })
+      });
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder('utf-8');
+      if (messages.length === 0) {
+        addTemporaryConversation(input);
+      }
+      // Stream NDJSON lines; for now just forward raw lines to onToken
+      let buffer = '';
+      while (reader) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 1);
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (typeof obj.text === 'string') {
+                onToken(obj.text);
+              } else if (typeof obj.delta === 'string') {
+                onToken(obj.delta);
+              } else if (typeof obj.event === 'string') {
+                // ignore control events
+                onToken(
+                  typeof obj.data === 'string'
+                    ? obj.data
+                    : JSON.stringify(obj.data)
+                );
+              } else {
+                // fallback: emit a dot or nothing
+              }
+            } catch {
+              // Not JSON, pass through raw
+              onToken(line);
+            }
+          }
+        }
+      }
+      return;
+    }
+
     const res = await fetch(`${BASE_URL}/query/stream`, {
       method: 'POST',
       headers: {
@@ -366,7 +503,7 @@ export function ChatProvider({
     const reader = res.body?.getReader();
     const decoder = new TextDecoder('utf-8');
     if (messages.length === 0) {
-      addTemporaryConversation(input)
+      addTemporaryConversation(input);
     }
     while (reader) {
       const { value, done } = await reader.read();
@@ -381,11 +518,12 @@ export function ChatProvider({
     backend?: string,
     mode?: string,
     project_path?: string
-  )=> {
+  ) => {
     if (messages.length === 0) {
-      addTemporaryConversation(input)
+      addTemporaryConversation(input);
     }
-    const effectiveBackend = backend ?? settings?.settings.llm_backend ?? 'ollama';
+    const effectiveBackend =
+      backend ?? settings?.settings.llm_backend ?? 'ollama';
     return consumeEncryptedStream(
       `${BASE_URL}/query/secure_stream`,
       apiKey,
@@ -398,8 +536,8 @@ export function ChatProvider({
         mode,
         project_path
       })
-    )
-  }
+    );
+  };
 
   const transcribe = async (blob: Blob): Promise<string> => {
     const form = new FormData();
@@ -421,7 +559,11 @@ export function ChatProvider({
     if (!userSession?.userId) {
       throw new Error('User must be authenticated to load settings');
     }
-    const data = await fetchWithKey(`${BASE_URL}/settings/${userSession.userId}`, apiKey, setError);
+    const data = await fetchWithKey(
+      `${BASE_URL}/settings/${userSession.userId}`,
+      apiKey,
+      setError
+    );
     return data as AppSettings;
   };
 
@@ -430,17 +572,17 @@ export function ChatProvider({
       throw new Error('User must be authenticated to update settings');
     }
     const url = `${BASE_URL}/settings/${userSession.userId}`;
-    const data = await fetchWithKey(url, apiKey, setError, {
+    const data = (await fetchWithKey(url, apiKey, setError, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(settings)
-    }) as { settings: SettingsType } | null | undefined;
+    })) as { settings: SettingsType } | null | undefined;
     let updatedSettings = settings as AppSettings;
     if (data) {
       updatedSettings = {
-        settings: {...data.settings},
+        settings: { ...data.settings },
         llm_options: settings.llm_options as LLMOptions
       };
       setSettings(updatedSettings);
@@ -451,7 +593,9 @@ export function ChatProvider({
 
   // User profile management methods
   const getUsers = async () => {
-    const data = await fetchWithKey(`${BASE_URL}/users`, apiKey, (e) => console.error(e)) as {users: UserProfile[]};
+    const data = (await fetchWithKey(`${BASE_URL}/users`, apiKey, e =>
+      console.error(e)
+    )) as { users: UserProfile[] };
     return { users: data?.users || [] };
   };
 
@@ -639,22 +783,24 @@ export function ChatProvider({
     }
   };
 
-  const getFolders = async (path: string): Promise<BrowseFoldersResponse | null> => {
-     const folders = await fetchWithKey(
-       `${BASE_URL}/browse-folders?path=${encodeURIComponent(path)}`,
-       apiKey,
-       (e) => {
-         if (e) {
-           throw new Error(e || 'Failed to fetch folders');
-         }
-       },
-       undefined,
-       1
-     ) as unknown as Promise<BrowseFoldersResponse | null>;
+  const getFolders = async (
+    path: string
+  ): Promise<BrowseFoldersResponse | null> => {
+    const folders = (await fetchWithKey(
+      `${BASE_URL}/browse-folders?path=${encodeURIComponent(path)}`,
+      apiKey,
+      e => {
+        if (e) {
+          throw new Error(e || 'Failed to fetch folders');
+        }
+      },
+      undefined,
+      1
+    )) as unknown as Promise<BrowseFoldersResponse | null>;
 
-     console.error('Returned folders', folders)
-     return folders;
-  }
+    console.error('Returned folders', folders);
+    return folders;
+  };
 
   return (
     <ChatContext.Provider
@@ -696,7 +842,10 @@ export function ChatProvider({
         getPrivacySettings,
         updatePrivacySettings,
         registerUser,
-        getFolders
+        getFolders,
+
+        useAgent,
+        setUseAgent
       }}
     >
       {children}

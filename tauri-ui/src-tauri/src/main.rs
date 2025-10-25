@@ -4,6 +4,10 @@ use std::{
     env,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::Duration,
 };
@@ -130,6 +134,11 @@ fn main() {
             let splash_thread_1 = splashscreen_window.clone();
             let splash_thread_2 = splashscreen_window.clone();
 
+            let loaded = Arc::new(AtomicBool::new(false));
+            let loaded_flag = loaded.clone();
+            let loaded_thread_1 = loaded.clone();
+            let loaded_thread_2 = loaded.clone();
+
             let cwd = env::current_dir().expect("Couldn't get current dir");
             let project_root = cwd.parent().expect("Couldn't get project root");
 
@@ -160,15 +169,24 @@ fn main() {
 
             thread::spawn(move || {
                 for line in out_reader.lines().flatten() {
-                    splash_thread_1.emit("backend-log", line).ok();
+                    if !loaded_thread_1.load(Ordering::Relaxed) {
+                        splash_thread_1.emit("backend-log", line).ok();
+                    } else {
+                        println!("{}", line);
+                    }
                 }
             });
 
             thread::spawn(move || {
                 for line in err_reader.lines().flatten() {
-                    splash_thread_2.emit("backend-log", line).ok();
+                    if !loaded_thread_2.load(Ordering::Relaxed) {
+                        splash_thread_2.emit("backend-log", line).ok();
+                    } else {
+                        eprintln!("{}", line);
+                    }
                 }
             });
+
 
             thread::spawn(move || {
                 if wait_for_api_ready() {
@@ -176,6 +194,7 @@ fn main() {
                 } else {
                     eprintln!("Backend not responding in time");
                 }
+                loaded_flag.store(true, Ordering::Relaxed);
 
                 splashscreen_window.close().unwrap();
                 main_window.show().unwrap();

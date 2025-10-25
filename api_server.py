@@ -4,6 +4,9 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+from engine.codegen_agent import RunRequest, RunResponse, run_once, build_repo_map, LLMBroker, PLANNER_SYSTEM, \
+    run_stream
+# allow importing api_server without whisper installed
 import sys
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
@@ -17,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from fastapi import Depends, Header, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import (
     X25519PrivateKey, X25519PublicKey,
@@ -464,6 +467,7 @@ def post_conversation(conversation_id: str, req: QueryRequest, user_id: str = De
     if req.project_path is not None and req.project_path != "":
         profile["project_path"] = req.project_path
         profile["mode"] = "development"
+        profile.pop("project_metadata", None)
         vectorstore_manager.get_vectorstore(profile)
 
     # Process input if provided
@@ -1187,6 +1191,34 @@ def login_user(user_data: UserLogin):
         "api_key": api_key,
         "profile": profile
     }
+
+@app.post("/agent/run", response_model=RunResponse)
+def api_run(req: RunRequest) -> RunResponse:
+    return run_once(req)
+
+@app.post("/agent/plan")
+def api_plan(req: RunRequest):
+    repo = Path(req.repo).resolve()
+    repo_map = build_repo_map(repo, max_files=req.max_map, include_globs=req.allow)
+    user = (
+        "[TASK]\n" + req.ticket + "\n\n" +
+        "[REPO_MAP]\n" + json.dumps(repo_map, ensure_ascii=False, indent=2) + "\n\n" +
+        "[RELEVANT_EXCERPTS]\n(controller collects later)\n\n" +
+        "[CONSTRAINTS]\n" + "\n".join(req.constraints or [])
+    )
+    broker = LLMBroker()
+    out = broker.ask(req.models.planner, PLANNER_SYSTEM, user, req.profile, req.settings)
+    try:
+        obj = json.loads(out)
+        return JSONResponse(obj)
+    except Exception:
+        return JSONResponse({"raw": out})
+
+@app.post("/agent/run/stream")
+def api_run_stream(req: RunRequest):
+    # NDJSON (application/x-ndjson) is widely supported by CLIs and browsers
+    return StreamingResponse(run_stream(req), media_type="application/x-ndjson")
+
 
 def main():
     """Main entry point for the API server."""

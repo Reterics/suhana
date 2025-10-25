@@ -36,7 +36,10 @@ export function App() {
     projectMetadata,
     setProjectMetadata,
     isAuthenticated,
-    logout
+    logout,
+    // Agent mode
+    useAgent,
+    setUseAgent
   } = useChat();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -63,6 +66,15 @@ export function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  useEffect(() => {
+    if (
+      projectMetadata &&
+      projectMetadata.path &&
+      projectMetadata.path !== projectPath
+    ) {
+      setProjectPath(projectMetadata.path as string);
+    }
+  }, [projectMetadata]);
   const updateConversationMetadata = useCallback(
     async function updateConversationMetadata(mode: string, path: string) {
       const response = await fetch(
@@ -136,33 +148,47 @@ export function App() {
     ]);
     const index = messages.length + 1;
     let text = '';
-    if (settings?.settings.secured_streaming) {
-      return await sendSecuredStreamingMessage(input, token => {
-        text += token;
-        setMessages(prev => {
-          const copy = [...prev];
-          copy[index] = {
-            role: 'assistant',
-            content: text
-          };
-          return copy;
-        });
-      });
+    const mode = currentMode;
+    const project_path = projectPath;
+    if (settings?.settings.secured_streaming && !useAgent) {
+      return await sendSecuredStreamingMessage(
+        input,
+        token => {
+          text += token;
+          setMessages(prev => {
+            const copy = [...prev];
+            copy[index] = {
+              role: 'assistant',
+              content: text
+            };
+            return copy;
+          });
+        },
+        undefined,
+        mode,
+        project_path
+      );
     }
     if (settings?.settings.streaming) {
-      return await sendStreamingMessage(input, token => {
-        text += token;
-        setMessages(prev => {
-          const copy = [...prev];
-          copy[index] = {
-            role: 'assistant',
-            content: text
-          };
-          return copy;
-        });
-      });
+      return await sendStreamingMessage(
+        input,
+        token => {
+          text += token;
+          setMessages(prev => {
+            const copy = [...prev];
+            copy[index] = {
+              role: 'assistant',
+              content: text
+            };
+            return copy;
+          });
+        },
+        undefined,
+        mode,
+        project_path
+      );
     }
-    sendMessage(input).then(response => {
+    sendMessage(input, undefined, mode, project_path).then(response => {
       if (response) {
         setMessages(prev => {
           const copy = [...prev];
@@ -234,6 +260,20 @@ export function App() {
                     <option value="normal">Normal</option>
                     <option value="development">Development</option>
                   </select>
+
+                  {currentMode === 'development' && projectPath && (
+                    <label
+                      className="flex items-center gap-2 ml-3 text-sm"
+                      title="Use Agent (/agent endpoints) for development"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={useAgent}
+                        onChange={e => setUseAgent(e.currentTarget.checked)}
+                      />
+                      <span>Agent Mode</span>
+                    </label>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3 flex-1 max-w-md">
