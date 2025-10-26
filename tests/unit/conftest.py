@@ -18,6 +18,6 @@ fake_sd = SimpleNamespace(
     default=SimpleNamespace(samplerate=16000)
 )
 
-sys.modules.setdefault("sounddevice", fake_sd())
+sys.modules.setdefault("sounddevice", fake_sd)
 sys.modules.setdefault("TTS", MagicMock())
 sys.modules.setdefault("TTS.api", MagicMock())
