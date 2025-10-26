@@ -28,19 +28,16 @@ if hasattr(np._core, 'multiarray') and not hasattr(np, '_MULTIARRAY_PATCHED'):
     if not hasattr(np, 'multiarray'):
         np.multiarray = np._core.multiarray
 
+from TTS.api import TTS
 import soundfile as sf
 import time
 
-_model = None
 _tts = None
 
-@lru_cache
+@lru_cache(maxsize=1) #LRU Cache is like useMemo
 def get_whisper_model():
-    global _model
-    if _model is None:
-        import whisper
-        _model = whisper.load_model("base")  # or "tiny", "small", etc.
-    return _model
+    import whisper
+    return whisper.load_model("base")  # or "tiny", "small", etc.
 
 def record_audio(duration=5, samplerate=16000):
     print("🎙️ Listening...")
@@ -155,7 +152,6 @@ def speak_text(text):
     global _tts
     if _tts is None:
         print("🔊 Initializing text-to-speech engine...")
-        from TTS.api import TTS
         _tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
     print("🔊 Generating speech...")
     try:

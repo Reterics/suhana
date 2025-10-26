@@ -1,26 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Suhana CodeGen Agent – FastAPI endpoint (Python 3.12+)
-
-Planner → Coder → Critic controller wrapped behind HTTP.
-
-Notes
------
-- Requires `git` on PATH.
-- Controller does not install deps; it only runs your configured commands.
-- Save this file with UTF-8 encoding and LF newlines.
-"""
 from __future__ import annotations
-
+from dataclasses import dataclass
+from typing import Iterable, List, Dict, Any, Tuple, Optional, overload, Literal
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
 
-from fastapi import HTTPException
-
-from engine.agent.models import RunRequest, RunResponse, CommandOutcome
-from engine.agent.coder import (
+from engine.coding_agent.models import RunRequest, RunResponse, CommandOutcome
+from engine.coding_agent.coder import (
     CODER_SYSTEM,
     validate_unified_diff,
     git_apply,
@@ -28,15 +13,15 @@ from engine.agent.coder import (
     CmdResult,
     run_cmd,
 )
-from engine.agent.commons import (
+from engine.coding_agent.commons import (
     ask,
     ask_stream,
     extract_json_from_raw_text,
     extract_code_from_markdown,
     now_stamp,
 )
-from engine.agent.context import collect_snippets, build_repo_map
-from engine.agent.planner import PLANNER_SYSTEM, get_planner_input
+from engine.coding_agent.context import collect_snippets, build_repo_map
+from engine.coding_agent.planner import PLANNER_SYSTEM, get_planner_input
 from engine.utils import configure_logging
 
 logger = configure_logging(__name__)
@@ -45,161 +30,14 @@ CRITIC_SYSTEM = (
     "You are the CRITIC. Given the plan and failing outputs, return a SMALL unified diff fixing the root cause. No prose."
 )
 
-# ---------------------------------------------------------------------------
-# Core run logic (non-streaming)
-# ---------------------------------------------------------------------------
-REPAIR_MAX = 3
 
-def run_once(req: RunRequest) -> RunResponse:
-    repo = Path(req.repo).resolve()
-    if not repo.exists():
-        raise HTTPException(400, f"Repo not found: {repo}")
-
-    artifacts_root = (repo / ".agent_artifacts" / now_stamp()).resolve()
-    artifacts_root.mkdir(parents=True, exist_ok=True)
-
-    # 1) Repo map
-    repo_map = build_repo_map(repo, max_files=req.max_map, include_globs=req.allow)
-
-    # 2) Planner
-    planner_user = json.dumps({
-        "format": "planner_input_v1",
-        "sections": {
-            "task": (req.ticket or "").strip(),
-            "repo_map": repo_map,  # already a JSON-serializable list
-            "relevant_excerpts": "(none yet — controller collects after plan)",
-            "constraints": req.constraints or [
-                "patch-only unified diff",
-                "respect path allowlist"
-            ]
-        }
-    }, ensure_ascii=False)
-
-    plan_text = ask(req.models.planner, PLANNER_SYSTEM, planner_user)
-    (artifacts_root / "plan_raw.txt").write_text(plan_text, encoding="utf-8")
-    try:
-        plan = json.loads(plan_text)
-    except json.JSONDecodeError as e:
-        raise HTTPException(500, f"Planner returned invalid JSON: {e}")
-    (artifacts_root / "plan.json").write_text(
-        json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-
-    # 3) Snippets
-    snippets = collect_snippets(repo, plan.get("impacted", []), context_lines=160)
-
-    # 4) Coder
-    coder_user = (
-        "[PLAN_JSON]\n"
-        + json.dumps(plan, ensure_ascii=False)
-        + "\n\n"
-        + "[RELEVANT_EXCERPTS]\n"
-        + snippets
-        + "\n"
-    )
-    coder_diff = ask(req.models.coder, CODER_SYSTEM, coder_user)
-
-    clean_diff = coder_diff.strip()
-
-    # If it doesn't start with a valid diff, try to extract fenced block
-    if not clean_diff.startswith("diff --git"):
-        logger.info(f"Not a diff format, Fallback to markdown.")
-        start = clean_diff.find("```")
-        if start != -1:
-            end = clean_diff.find("```", start + 3)
-            if end != -1:
-                block = clean_diff[start + 3:end].strip()
-                if block.lower().startswith("diff"):
-                    block = block[4:].strip()
-                clean_diff = block
-                logger.info("Diff extracted from markdown.")
-            logger.warning("Markdown diff end detection failed.")
-        else:
-            logger.warning("Markdown diff detection failed.")
-
-    (artifacts_root / "coder.diff").write_text(clean_diff, encoding="utf-8")
-
-    ok, msg, touched = validate_unified_diff(clean_diff, req.allow)
-    if not ok:
-        raise HTTPException(400, f"Coder diff invalid: {msg}")
-
-    ok_apply, apply_msg, patch_file = git_apply(clean_diff, repo)
-    if not ok_apply:
-        (artifacts_root / "apply_error.txt").write_text(apply_msg, encoding="utf-8")
-        raise HTTPException(500, f"git apply failed: {apply_msg}")
-
-    # 5) Commands (after_patch)
-    cmd_results: List[Tuple[str, CmdResult]] = []
-    for c in plan.get("commands", []):
-        if c.get("when") == "after_patch":
-            name = c.get("name") or "cmd"
-            res = run_cmd(c.get("cmd"), cwd=repo, timeout=req.timeout_sec)
-            (artifacts_root / "logs").mkdir(exist_ok=True)
-            (artifacts_root / "logs" / f"{name}.out.txt").write_text(res.out, encoding="utf-8")
-            (artifacts_root / "logs" / f"{name}.err.txt").write_text(res.err, encoding="utf-8")
-            cmd_results.append((name, res))
-
-    def _all_ok() -> bool:
-        return all(r.ok for _, r in cmd_results) if cmd_results else True
-
-    # 6) Critic loop
-    for i in range(REPAIR_MAX):
-        if _all_ok():
-            break
-        combined: List[str] = []
-        for name, r in cmd_results:
-            if not r.ok:
-                combined.append(
-                    f"## {name} (exit={r.code})\nSTDOUT:\n{r.out[-50000:]}\n\nSTDERR:\n{r.err[-50000:]}\n"
-                )
-        test_output = "\n\n".join(combined)[:200_000]
-
-        critic_user = (
-            "[PLAN_JSON]\n" + json.dumps(plan, ensure_ascii=False) + "\n\n" +
-            "[TEST_OUTPUT]\n" + test_output + "\n\n" +
-            "[RELEVANT_EXCERPTS]\n" + snippets + "\n"
-        )
-        critic_diff = ask(req.models.critic, CRITIC_SYSTEM, critic_user)
-        (artifacts_root / "critic").mkdir(exist_ok=True)
-        (artifacts_root / "critic" / f"critic_{i + 1}.diff").write_text(critic_diff, encoding="utf-8")
-
-        ok, msg, _ = validate_unified_diff(critic_diff, req.allow)
-        if not ok:
-            raise HTTPException(400, f"Critic diff invalid: {msg}")
-        ok_apply, apply_msg, patch_file = git_apply(critic_diff, repo)
-        if not ok_apply:
-            (artifacts_root / "critic" / f"critic_apply_error_{i + 1}.txt").write_text(apply_msg, encoding="utf-8")
-            raise HTTPException(500, f"git apply (critic) failed: {apply_msg}")
-
-        # re-run commands
-        cmd_results = []
-        for c in plan.get("commands", []):
-            if c.get("when") == "after_patch":
-                name = c.get("name") or "cmd"
-                res = run_cmd(c.get("cmd"), cwd=repo, timeout=req.timeout_sec)
-                (artifacts_root / "logs" / f"{name}.out.txt").write_text(res.out, encoding="utf-8")
-                (artifacts_root / "logs" / f"{name}.err.txt").write_text(res.err, encoding="utf-8")
-                cmd_results.append((name, res))
-
-    if not _all_ok():
-        raise HTTPException(500, "Some commands still failing after Critic loop. See artifacts.")
-
-    log_paths = {
-        "plan": str((artifacts_root / "plan.json").resolve()),
-        "coder_diff": str((artifacts_root / "coder.diff").resolve()),
-        "logs_dir": str((artifacts_root / "logs").resolve()),
-    }
-
-    return RunResponse(
-        status="ok",
-        artifacts_dir=str(artifacts_root),
-        plan=plan,
-        touched_files=touched,
-        logs={
-            "commands": [CommandOutcome(name=n, ok=r.ok, code=r.code).model_dump() for n, r in cmd_results],
-            "paths": log_paths,
-        },
-    )
+@dataclass
+class RunResult:
+    ok: bool
+    artifacts_dir: Optional[str] = None
+    last_error: Optional[str] = None
+    # if you want the raw NDJSON lines back:
+    events: Optional[List[str]] = None
 
 # ---------------------------------------------------------------------------
 # Streaming (NDJSON) runner
@@ -210,7 +48,7 @@ def ndjson(obj: Dict[str, Any]) -> str:
 
 EVENT_BUFFER_LIMIT = 200_000
 
-def run_stream(req: RunRequest) -> Iterable[str]:
+def _run_stream_iter(req) -> Iterable[str]:
     repo = Path(req.repo).resolve()
     if not repo.exists():
         yield ndjson({"event": "error", "data": f"Repo not found: {repo}"})
@@ -310,7 +148,7 @@ def run_stream(req: RunRequest) -> Iterable[str]:
 
         # If it doesn't start with a valid diff, try to extract fenced block
         if not coder_diff.startswith("diff --git"):
-            logger.info(f"Not a diff format, Fallback to markdown.")
+            logger.info("Not a diff format, Fallback to markdown.")
             # TODO: make this an array
             clean_diff = extract_code_from_markdown(coder_diff, "diff") or ""
         else:
@@ -368,7 +206,7 @@ def run_stream(req: RunRequest) -> Iterable[str]:
 
             # If it doesn't start with a valid diff, try to extract fenced block
             if not debug_diff.startswith("diff --git"):
-                logger.info(f"Not a diff format, Fallback to markdown.")
+                logger.info("Not a diff format, Fallback to markdown.")
                 clean_diff = extract_code_from_markdown(debug_diff, "diff") or ""
             else:
                 clean_diff = debug_diff
@@ -404,6 +242,7 @@ def run_stream(req: RunRequest) -> Iterable[str]:
     def _all_ok() -> bool:
         return all(r.ok for _, r in cmd_results) if cmd_results else True
 
+    REPAIR_MAX = 3
     # Critic loop
     for i in range(REPAIR_MAX):
         if _all_ok():
@@ -458,3 +297,47 @@ def run_stream(req: RunRequest) -> Iterable[str]:
 
     yield ndjson({"event": "done", "data": {"ok": True, "artifacts_dir": str(artifacts_root)}})
 
+
+@overload
+def run(req, *, as_iter: Literal[True]) -> Iterable[str]: ...
+@overload
+def run(req, *, as_iter: Literal[False] = ...) -> RunResult: ...
+
+def run(req, *, as_iter: bool = False):
+    """
+    If as_iter=True: return a generator of NDJSON event lines.
+    Otherwise: consume the stream and return a RunResult summary.
+    """
+    gen = _run_stream_iter(req)
+    if as_iter:
+        return gen
+
+    # Eager consumption path
+    events: List[str] = []
+    ok = False
+    artifacts_dir: Optional[str] = None
+    last_error: Optional[str] = None
+
+    for line in gen:
+        events.append(line)
+        # try to observe 'done' or 'error' to produce nicer summary
+        try:
+            evt = json.loads(line)
+            if isinstance(evt, dict):
+                if evt.get("event") == "error":
+                    # last error seen
+                    data = evt.get("data")
+                    last_error = data if isinstance(data, str) else str(data)
+                if evt.get("event") == "done":
+                    data = evt.get("data") or {}
+                    ok = bool(data.get("ok"))
+                    artifacts_dir = data.get("artifacts_dir")
+        except Exception:
+            # ignore malformed NDJSON lines in summary mode
+            pass
+
+    return RunResult(ok=ok, artifacts_dir=artifacts_dir, last_error=last_error, events=events)
+
+def run_stream(req) -> Iterable[str]:
+    """Streaming alias kept for compatibility."""
+    return _run_stream_iter(req)

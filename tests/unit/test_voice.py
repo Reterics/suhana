@@ -78,9 +78,10 @@ def test_get_whisper_model(monkeypatch):
     import engine.voice as voice
 
     mock_model = MagicMock()
-    monkeypatch.setattr(voice.whisper, "load_model", MagicMock(return_value=mock_model))
-    # Reset model cache
-    voice._model = None
+    monkeypatch.setattr(voice, "get_whisper_model", MagicMock(return_value=mock_model))
+    # Clear the cache between tests
+    voice.get_whisper_model.cache_clear()
+
     model = voice.get_whisper_model()
     assert model is mock_model
     # Subsequent call uses cache, not loader
@@ -251,8 +252,10 @@ def test_record_audio_until_silence_fallback(monkeypatch):
 def test_get_whisper_model_with_arg(monkeypatch):
     import engine.voice as voice
     fake_model = MagicMock()
-    monkeypatch.setattr(voice.whisper, "load_model", MagicMock(return_value=fake_model))
-    voice._model = None
+    monkeypatch.setattr(voice, "get_whisper_model", MagicMock(return_value=fake_model))
+    # Clear the cache between tests
+    voice.get_whisper_model.cache_clear()
+
     model = voice.get_whisper_model()
     assert model is fake_model
 

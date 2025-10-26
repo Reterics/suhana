@@ -124,7 +124,7 @@ def test_get_api_key_usage(mock_verify_api_key):
 # User Management Tests
 def test_register_user():
     """Test user registration."""
-    with patch("api_server.user_manager") as mock_user_manager, \
+    with patch("api_server._user_manager") as mock_user_manager, \
          patch("engine.api_key_store.get_api_key_manager") as mock_get_api_key_manager:
         # Setup the mocks
         mock_user_manager.create_user.return_value = (True, "User created successfully")
@@ -166,7 +166,7 @@ def test_register_user():
 
 def test_login_user():
     """Test user login."""
-    with patch("api_server.user_manager") as mock_user_manager, \
+    with patch("api_server._user_manager") as mock_user_manager, \
          patch("engine.api_key_store.get_api_key_manager") as mock_get_api_key_manager:
         # Setup the mocks
         mock_user_manager.authenticate.return_value = (True, "auth_token")
@@ -257,7 +257,7 @@ def test_get_conversation(mock_verify_api_key):
 # User Profile Tests
 def test_get_profile(mock_verify_api_key):
     """Test getting a user profile."""
-    with patch("api_server.user_manager") as mock_user_manager:
+    with patch("api_server._user_manager") as mock_user_manager:
         # Setup the mock
         mock_user_manager.get_profile.return_value = {
             "name": "Test User",
@@ -280,7 +280,7 @@ def test_get_profile(mock_verify_api_key):
 
 def test_update_profile(mock_verify_api_key):
     """Test updating a user profile."""
-    with patch("api_server.user_manager") as mock_user_manager, \
+    with patch("api_server._user_manager") as mock_user_manager, \
          patch("engine.security.access_control.check_permission", return_value=False) as mock_check_permission:
         # Setup the mock
         mock_user_manager.get_profile.return_value = {
@@ -313,7 +313,7 @@ def test_update_profile(mock_verify_api_key):
 # User Settings Tests
 def test_get_user_settings(mock_verify_api_key):
     """Test getting user settings."""
-    with patch("api_server.settings_manager") as mock_settings_manager, \
+    with patch("api_server._settings_manager") as mock_settings_manager, \
          patch("api_server.get_downloaded_models", return_value=["llama2", "mistral"]) as mock_get_models:
         # Setup the mock
         mock_settings_manager.get_settings.return_value = {
@@ -342,7 +342,7 @@ def test_get_user_settings(mock_verify_api_key):
 
 def test_update_user_settings(mock_verify_api_key):
     """Test updating user settings."""
-    with patch("api_server.settings_manager") as mock_settings_manager:
+    with patch("api_server._settings_manager") as mock_settings_manager:
         # Setup the mock
         mock_settings_manager.get_settings.return_value = {
             "theme": "dark",
@@ -456,7 +456,7 @@ def test_revoke_api_key_not_found(mock_verify_api_key):
 
 def test_login_user_invalid_credentials():
     """Test login with invalid credentials."""
-    with patch("api_server.user_manager") as mock_user_manager:
+    with patch("api_server._user_manager") as mock_user_manager:
         # Setup the mock to return False for authentication failure
         mock_user_manager.authenticate.return_value = (False, None)
 
@@ -519,7 +519,7 @@ def test_verify_api_key_invalid():
 
 def test_update_profile_unauthorized(mock_verify_api_key):
     """Test updating a profile for a different user without permission."""
-    with patch("api_server.user_manager") as mock_user_manager, \
+    with patch("api_server._user_manager") as mock_user_manager, \
          patch("engine.security.access_control.check_permission", return_value=False) as mock_check_permission:
         # Setup the mock for a different user than the authenticated one
         # The test will try to update "different_user_id" while authenticated as "test_user_id"

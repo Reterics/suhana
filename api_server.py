@@ -4,7 +4,8 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-from engine.codegen_agent import RunRequest, RunResponse, run_once, run_stream
+from engine.coding_agent import run, RunResult
+from engine.coding_agent.models import RunRequest
 # allow importing api_server without whisper installed
 import sys
 sys.stdout.reconfigure(line_buffering=True)
@@ -1191,15 +1192,15 @@ def login_user(user_data: UserLogin):
         "profile": profile
     }
 
-@app.post("/agent/run", response_model=RunResponse)
-def api_run(req: RunRequest) -> RunResponse:
-    return run_once(req)
+@app.post("/agent/run", response_model=RunResult)
+def api_run(req: RunRequest) -> RunResult:
+    return run(req)
 
 
 @app.post("/agent/run/stream")
 def api_run_stream(req: RunRequest):
     # NDJSON (application/x-ndjson) is widely supported by CLIs and browsers
-    return StreamingResponse(run_stream(req), media_type="application/x-ndjson")
+    return StreamingResponse(run(req, as_iter=True), media_type="application/x-ndjson")
 
 
 def main():
