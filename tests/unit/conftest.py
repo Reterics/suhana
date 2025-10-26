@@ -2,6 +2,7 @@ import pytest
 import subprocess
 import sys
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 @pytest.fixture(autouse=True)
 def patch_subprocess_run(monkeypatch):
@@ -17,4 +18,6 @@ fake_sd = SimpleNamespace(
     default=SimpleNamespace(samplerate=16000)
 )
 
-sys.modules.setdefault("sounddevice", fake_sd)
+sys.modules.setdefault("sounddevice", fake_sd())
+sys.modules.setdefault("TTS", MagicMock())
+sys.modules.setdefault("TTS.api", MagicMock())
