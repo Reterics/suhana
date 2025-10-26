@@ -114,7 +114,9 @@ def test_record_audio_until_silence_no_speech(monkeypatch):
     # Mock estimate_noise_floor to set a threshold
     monkeypatch.setattr(voice, "estimate_noise_floor", lambda *a, **k: 10)
     # Mock sd.InputStream to return None, triggers the fallback branch
-    monkeypatch.setattr(voice.sd, "InputStream", MagicMock(return_value=None))
+    monkeypatch.setattr(
+        voice.sd, "InputStream", MagicMock(return_value=None), raising=False
+    )
     monkeypatch.setattr(voice.np, "zeros", lambda shape, dtype: np.array([0], dtype=np.int16))
     audio = voice.record_audio_until_silence()
     assert (audio == np.array([0], dtype=np.int16)).all()
@@ -264,10 +266,9 @@ def test_record_audio_until_silence_empty(monkeypatch):
     import numpy as np
 
     monkeypatch.setattr(voice, "estimate_noise_floor", lambda *a, **k: 1)
-    class DummyStream:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-    monkeypatch.setattr(voice.sd, "InputStream", lambda *a, **k: DummyStream())
+    monkeypatch.setattr(
+        voice.sd, "InputStream", MagicMock(return_value=None), raising=False
+    )
     monkeypatch.setattr(voice.np, "concatenate", lambda arrs: np.concatenate(arrs) if arrs else np.array([], dtype=np.int16))
     monkeypatch.setattr(voice.np, "squeeze", lambda arr: arr)
     # Patch input so the stream callback is never called, so audio_chunks remains empty

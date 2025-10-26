@@ -1,8 +1,4 @@
 langchain_core~=1.0.0
-langchain_community~=0.4
-torch==2.8.0+cpu
-sentence-transformers==5.1.0
-transformers==4.55.4
 numpy~=2.3.4
 PyYAML
 requests~=2.32.3
