@@ -268,6 +268,30 @@ export function Settings({ onClose }: SettingsProps) {
                   </select>
                 </div>
 
+                <div>
+                  <label
+                    htmlFor="agent-model"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Agent Model (Ollama)
+                  </label>
+                  <select
+                    id="agent-model"
+                    value={settingsForm.settings.agent_model || 'codellama'}
+                    onChange={e =>
+                      handleChange('agent_model', e.currentTarget.value)
+                    }
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  >
+                    {settings.llm_options.ollama.map(model => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Used by Agent mode for planner/coder/critic. Defaults to codellama.</p>
+                </div>
+
                 {settingsForm.settings.llm_backend === 'ollama' && (
                   <div>
                     <label

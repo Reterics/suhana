@@ -16,6 +16,7 @@ export type SettingsType = {
   openai_model: string;
   gemini_model?: string;
   claude_model?: string;
+  agent_model?: string;
   voice: boolean;
   streaming: boolean;
   secured_streaming: boolean;
@@ -338,7 +339,7 @@ export function ChatProvider({
 
     // If Agent mode is enabled, route to /agent/run
     if (useAgent) {
-      const modelName = 'codellama';
+      const modelName = settings?.settings.agent_model || 'codellama';
       if (!project_path) {
         alert(project_path + ' is empty');
         return '';
@@ -422,7 +423,7 @@ export function ChatProvider({
         alert(project_path + ' is empty');
         return;
       }
-      const modelName = 'codellama';
+      const modelName = settings?.settings.agent_model || 'codellama';
 
       const res = await fetch(`${BASE_URL}/agent/run/stream`, {
         method: 'POST',
